@@ -6514,7 +6514,7 @@ exports.verifyPayment = functions.https.onRequest(async (request, res) => {
   res.json({ status: 'ok'});
     
 }
-})
+});
 
 
 exports.sendEmail = functions.https.onCall((data, context) => {
@@ -9525,4 +9525,241 @@ exports.deleteCartItem = functions.https.onCall((data, context) => {
     }).catch(err=>console.log('catch',err))
 
   })
-})
+});
+
+const accessToken = 'OGFhZDQzOTEtOGFhMy00ZTg1LWE3YzItOGQ4ODY2YTZhZDM4MzIyOGVkYmYtMDUz_P0A1_2f0172eb-45f8-4063-ab1b-45f9b4cdf45a'
+exports.createMeeting = functions.https.onRequest(async (req, res) => {
+
+  const { title, start, end, invitees } = req.body;
+
+  // Validate inputs
+  if (!accessToken) {
+    return res.status(400).json({ error: "Access token is required." });
+  }
+  if (!title || !start || !end) {
+    return res.status(400).json({
+      error: "Meeting title, start, and end time are required.",
+    });
+  }
+
+  try {
+    // Webex API endpoint for creating a meeting
+    const response = await axios.post(
+      "https://webexapis.com/v1/meetings",
+      { title, start, end, invitees },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Return the meeting details
+    return res.status(200).json({
+      message: "Meeting created successfully",
+      meeting: response.data,
+    });
+  } catch (error) {
+    console.error("Error creating meeting:", error.response?.data || error.message);
+
+    // Return the error response
+    return res.status(500).json({
+      error: "Failed to create the meeting",
+      details: error.response?.data || error.message,
+    });
+  }
+});
+
+exports.getMeetingParticipants = functions.https.onRequest(async (req, res) => {
+    const { meetingId } = req.query;
+    if (!meetingId || !accessToken) {
+        return res.status(400).json({
+            error: "Missing required parameters",
+            message: "Please provide both meetingId and accessToken in the request query.",
+        });
+    }
+
+    try {
+        const response = await axios.get("https://webexapis.com/v1/meetingParticipants", {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+            params: { meetingId },
+        });
+
+        return res.status(200).json({
+            message: "Participants retrieved successfully",
+            participants: response.data,
+        });
+    } catch (error) {
+        console.error("Error fetching participants:", error.response?.data || error.message);
+        return res.status(500).json({
+            error: "Failed to fetch participants",
+            details: error.response?.data || error.message,
+        });
+    }
+});
+
+exports.getMeetingDetails = functions.https.onRequest(async (req, res) => {
+  const { meetingId } = req.query;
+console.log({meetingId});
+  // Validate input
+  if (!meetingId || !accessToken) {
+    return res.status(400).json({
+      error: "Missing required parameters",
+      message: "Please provide both meetingId and accessToken in the request query.",
+    });
+  }
+
+  try {
+    // Fetch meeting details from Webex API
+    const response = await axios.get("https://webexapis.com/v1/meetings", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      params: { id: meetingId },
+    });
+
+    // Respond with meeting details
+    return res.status(200).json({
+      message: "Meeting details retrieved successfully",
+      meetingDetails: response.data,
+    });
+  } catch (error) {
+    console.error("Error fetching meeting details:", error.response?.data || error.message);
+    return res.status(500).json({
+      error: "Failed to fetch meeting details",
+      details: error.response?.data || error.message,
+    });
+  }
+});
+
+exports.getSingleMeeting = functions.https.onRequest(async (req, res) => {
+  const { meetingId } = req.query;
+  // Validate input
+  if (!meetingId || !accessToken) {
+    return res.status(400).json({
+      error: "Missing required parameters",
+      message: "Please provide both meetingId and accessToken in the request query.",
+    });
+  }
+
+  try {
+    // Fetch meeting details from Webex API
+    const response = await axios.get(`https://webexapis.com/v1/meetings/${meetingId}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      params: { id: meetingId },
+    });
+
+    // Respond with meeting details
+    return res.status(200).json({
+      message: "Meeting details retrieved successfully",
+      meetingDetails: response.data,
+    });
+  } catch (error) {
+    console.error("Error fetching meeting details:", error.response?.data || error.message);
+    return res.status(500).json({
+      error: "Failed to fetch meeting details",
+      details: error.response?.data || error.message,
+    });
+  }
+});
+
+exports.getInviteParticipants = functions.https.onRequest(async (req, res) => {
+    const { meetingId } = req.query;
+
+  if (!accessToken) {
+        return res.status(500).json({
+            error: "Webex access token is not configured in the environment.",
+        });
+    }
+
+    if (!meetingId) {
+        return res.status(400).json({
+            error: "Missing required parameter",
+            message: "Please provide a valid meetingId in the query string.",
+        });
+    }
+
+    try {
+        // API call to Webex to fetch participants (invitees) of the meeting
+        const response = await axios.get(
+            `https://webexapis.com/v1/meetingInvitees`,
+            {
+                headers: {
+                Authorization: `Bearer ${accessToken}`,
+                    "Content-Type": "application/json",
+                },
+                params: { meetingId },
+            }
+        );
+
+        // Send back the participants data
+        res.status(200).json({
+            message: "Participants retrieved successfully",
+            participants: response.data.items,
+        });
+    } catch (error) {
+        console.error("Error fetching participants:", error.response?.data || error.message);
+
+        // Return error details to the client
+        res.status(error.response?.status || 500).json({
+            error: "Failed to fetch participants",
+            details: error.response?.data || error.message,
+        });
+    }
+});
+
+exports.inviteParticipants = functions.https.onRequest(async (req, res) => {
+    // Parse meetingId and invitees from the request body
+    const { meetingId, invitees } = req.body;
+
+  if (!accessToken) {
+        return res.status(500).json({
+            error: "Webex access token is not configured in the environment.",
+        });
+    }
+
+    if (!meetingId || !invitees || !Array.isArray(invitees) || invitees.length === 0) {
+        return res.status(400).json({
+            error: "Invalid input",
+            message: "Please provide a valid meetingId and a non-empty array of invitees.",
+        });
+    }
+
+    try {
+        // API call to Webex to add invitees to the meeting
+        const response = await axios.patch(
+            `https://webexapis.com/v1/meetings/${meetingId}`,
+            {
+                invitees: invitees.map((invitee) => ({
+                    email: invitee.email,
+                    displayName: invitee.displayName,
+                })),
+            },
+            {
+                headers: {
+                Authorization: `Bearer ${accessToken}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        // Return the updated meeting details
+        res.status(200).json({
+            message: "Participants invited successfully",
+            meeting: response.data,
+        });
+    } catch (error) {
+        console.error("Error inviting participants:", error.response?.data || error.message);
+
+        // Return error details to the client
+        res.status(error.response?.status || 500).json({
+            error: "Failed to invite participants",
+            details: error.response?.data || error.message,
+        });
+    }
+});
