@@ -4274,7 +4274,6 @@ exports.deleteStudent = functions.https.onCall((data, context) => {
 });
 
 exports.addToIndex = functions.firestore.document('Questions/{QuestionsID}')
-
 .onCreate(snapshot => {
   const data =snapshot.data();
   const objectID = snapshot.id;
@@ -4283,7 +4282,6 @@ exports.addToIndex = functions.firestore.document('Questions/{QuestionsID}')
 }) 
 
 exports.updateIndex = functions.firestore.document('Questions/{QuestionsID}')
-
 .onUpdate((change)=>{
   const newData = change.after.data();
   const objectID = change.after.id;
@@ -9619,88 +9617,4 @@ exports.getSubjects = functions.https.onRequest(async (req, res) => {
     res.status(500).json({ error: "Failed to fetch subjects" });
   }
 });
-
-
-//rought functions
-exports.createQuestionV2 = functions.https.onRequest(async (req, res) => {
-  try {
-    // Static data to be inserted
-    const data = {
-      questionLanguage: ["english", "hindi", "urdu"],
-      questions: {
-        english: {
-          difficulty: 1,
-          isCorrect: 0,
-          options: ["-//-", "-//-", "-//-", "-//-"],
-          title: "-//-",
-        },
-        hindi: {
-          difficulty: 1,
-          isCorrect: 0,
-          options: ["-//-", "-//-", "-//-", "-//-"],
-          title: "-//-",
-        },
-      },
-      subject: "math",
-      topic: "trignomatry",
-    };
-console.log('isChecking 1');
-    // Add the data to the Firestore collection
-    const docRef = await admin.firestore().collection("QuestionV2").add(data);
-    console.log('isChecking 2');
-
-    res.status(200).json({
-      message: "Document created successfully",
-      documentId: docRef.id,
-    });
-  } catch (error) {
-    console.error("Error creating document:", error);
-    res.status(500).json({ error: "Failed to create document" });
-  }
-});
-
-exports.migrateQuestions = functions.https.onRequest(async (req, res) => {
-  try {
-    // Fetch all documents from the `Questions` collection
-    const questionsSnapshot = await db.collection('Questions').get();
-    if (questionsSnapshot.empty) {
-      res.status(404).send('No documents found in the Questions collection.');
-      return;
-    }
-
-    // Process each document and migrate it to the new format
-    const batch = db.batch();
-    questionsSnapshot.forEach((doc) => {
-    const data = doc.data();
-
-      // New document format
-      const newQuestionData = {
-        subject: data.subject,
-        topic: null, // Set to null or populate dynamically if available
-        questionLanguage: ['en'], // Assuming the default language is English
-        createdAt: data.createdAt || admin.firestore.FieldValue.serverTimestamp(),
-        questions: {
-          en: {
-            title: data.questionTitle,
-            options: data.options,
-            isCorrect: data.correctOption,
-            difficulty: data.difficulty,
-          },
-        },
-      };
-
-      // Reference to the new document in `QuestionV2`
-      const newDocRef = db.collection('QuestionV2').doc();
-      batch.set(newDocRef, newQuestionData);
-    });
-
-    // Commit the batch write
-    await batch.commit();
-    res.status(200).send('Migration completed successfully.');
-  } catch (error) {
-    console.error('Error migrating data:', error);
-    res.status(500).send('An error occurred during the migration process.');
-  }
-});
-
 
