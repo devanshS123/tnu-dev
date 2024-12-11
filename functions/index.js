@@ -4319,7 +4319,7 @@ exports.addQuizToIndex = functions.firestore.document('zSystemStore/{QuestionsID
     return bookIndex.saveObject({...data,objectID,id:objectID});
 
   }
-  
+  return 0;
 }) 
 
 exports.updateQuizIndex = functions.firestore.document('zSystemStore/{QuestionsID}')
@@ -4344,6 +4344,8 @@ exports.updateQuizIndex = functions.firestore.document('zSystemStore/{QuestionsI
     return bookIndex.saveObject({...newData, objectID})
 
   }
+  return 0;
+
 })
 
 exports.deleteQuizFromIndex = functions.firestore.document('zSystemStore/{QuestionsID}')
@@ -4363,6 +4365,8 @@ exports.deleteQuizFromIndex = functions.firestore.document('zSystemStore/{Questi
     console.log('book delete')
     return bookIndex.deleteObject(snapshot.id)
   }
+  return 0;
+
 })
 
 //============================
@@ -4536,9 +4540,10 @@ exports.payment = functions.https.onRequest(async (request, res) => {
 
     if (!order) return res.status(500).send({ hasError: true, message: "Some error occured"});
 
-    res.json({ hasError: false, message: order});
+    return res.json({ hasError: false, message: order});
+    
 } catch (error) {
-    res.status(500).send({ hasError: true, message: error });
+    return res.status(500).send({ hasError: true, message: error });
 }
 })
 
@@ -6357,7 +6362,7 @@ exports.verifyPayment = functions.https.onRequest(async (request, res) => {
                   //   return console.log('package book boughtitem err',err)
         
                   // })
-                    
+                    return 0;
                   });
                 }
                 console.log('<>package quiz<>',packageItems.quiz)
@@ -6377,6 +6382,8 @@ exports.verifyPayment = functions.https.onRequest(async (request, res) => {
                     // }).catch((err)=>{
                     //   return console.log('package quiz boughtitem err',err)
                     // })
+                    return 0;
+
                   });
                 }
                 if (packageItems.numberOfQuestions !== undefined && packageItems.numberOfQuestions !== 0) {
@@ -6472,7 +6479,7 @@ exports.verifyPayment = functions.https.onRequest(async (request, res) => {
                   createdAt: response.payload.payment.entity.created_at,
                 })
                 console.log('item added to purchaseHistory')
-                return
+                return 0;
               }).catch(err=>{
                 return {hasError:true , message:err}
               })
@@ -6498,7 +6505,7 @@ exports.verifyPayment = functions.https.onRequest(async (request, res) => {
         await batch.commit().then(async res => {
           await batch2.commit().catch(err=>console.log('<batch2>',err))
           await batch3.commit().catch(err=>console.log('<batch3>',err))
-          return
+          return 
         }).catch(err=>console.log('batch<>',err))
       }
       res.json({ status: 'ok'});
@@ -6507,11 +6514,13 @@ exports.verifyPayment = functions.https.onRequest(async (request, res) => {
 
       console.log('NOt verified')
     }
-    // res.json({ status: 'ok'});
+
+    return 0;
 } catch (error) {
 
   console.log('Catched',error)
   res.json({ status: 'ok'});
+    return 0;
     
 }
 });
@@ -6538,7 +6547,7 @@ exports.sendEmail = functions.https.onCall((data, context) => {
       console.log(error);
       return { hasError: true, message: error };
     });
-    
+    return 0;
   } catch (error) {
     return { hasError: true, message: error };
   }
@@ -7286,6 +7295,7 @@ exports.sendWelcomeEmail = functions.auth.user().onCreate((user) => {
   } catch (error) {
     return { hasError: true, message: error };
   }
+  return 0;
 });
 
 
@@ -7777,7 +7787,7 @@ exports.sendInvoice = functions.https.onRequest(async (request, response) => {
 // } catch (error) {
 //   response.send({error:error});
 // }
-response.json({ status: 'ok'});
+return response.json({ status: 'ok'});
 });
 
 exports.addInvoiceToIndex = functions.firestore.document('invoices/{invoices}')
@@ -7846,7 +7856,7 @@ exports.updatePacakge = functions.firestore.document('zSystemStore/{zSystemStore
               .then(res => console.log("book added",itemBook))
               .catch(err => console.log(err))
             }
-            return
+            return 0;
           }).catch(err => console.log(err))
 
         })
@@ -7867,7 +7877,7 @@ exports.updatePacakge = functions.firestore.document('zSystemStore/{zSystemStore
               .then(res=>console.log("quiz added", itemQuiz))
               .catch(err=>console.log(err))
             }
-            return
+            return 0;
           }).catch(err => console.log(err))
 
         })
@@ -8734,6 +8744,7 @@ exports.onSpecialCoupon = functions.firestore.document('DiscountCoupons/{docId}'
         }).catch((error) => console.log(error));
     }
   }
+  return 0;
 })
 
 exports.onCouponApprove = functions.firestore.document('DocumentRequest/{ID}')
@@ -9469,8 +9480,8 @@ exports.onCouponApprove = functions.firestore.document('DocumentRequest/{ID}')
       .catch((error) => console.log(error));
     }).catch((error) => console.log(error));
 
-
   }
+  return 0;
 })
 
 exports.deleteCollection = functions.https.onCall((data, context) => {
@@ -9479,9 +9490,10 @@ exports.deleteCollection = functions.https.onCall((data, context) => {
 
   admin.firestore().collection(path).listDocuments().then(val => {
     val.map((val) => {
-        batch.delete(val)
+       return batch.delete(val)
     })
-    return batch.commit()
+     batch.commit()
+    return 0;
   }).catch(err=>console.log(err))
   
 })
@@ -9527,239 +9539,168 @@ exports.deleteCartItem = functions.https.onCall((data, context) => {
   })
 });
 
-const accessToken = 'OGFhZDQzOTEtOGFhMy00ZTg1LWE3YzItOGQ4ODY2YTZhZDM4MzIyOGVkYmYtMDUz_P0A1_2f0172eb-45f8-4063-ab1b-45f9b4cdf45a'
-exports.createMeeting = functions.https.onRequest(async (req, res) => {
-
-  const { title, start, end, invitees } = req.body;
-
-  // Validate inputs
-  if (!accessToken) {
-    return res.status(400).json({ error: "Access token is required." });
-  }
-  if (!title || !start || !end) {
-    return res.status(400).json({
-      error: "Meeting title, start, and end time are required.",
-    });
-  }
-
+exports.getQuestionsV2 = functions.https.onRequest(async (req, res) => {
   try {
-    // Webex API endpoint for creating a meeting
-    const response = await axios.post(
-      "https://webexapis.com/v1/meetings",
-      { title, start, end, invitees },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+    const { subject, topic, questionLanguage } = req.query;
+
+    // Initialize Firestore query
+    let query = admin.firestore().collection("QuestionV2");
+
+    // Apply filters if they exist
+    if (subject) {
+      query = query.where("subject", "==", subject);
+    }
+    if (topic) {
+      query = query.where("topic", "==", topic);
+    }
+
+    // Execute the query
+    const snapshot = await query.get();
+
+    // Check if there are no matching documents
+    if (snapshot.empty) {
+      return res.status(404).json({ message: "No questions found" });
+    }
+
+    // Filter by questionLanguage if provided
+    const questions = snapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      .filter((doc) =>
+        questionLanguage
+          ? doc.questionLanguage.includes(questionLanguage)
+          : true
+      );
+
+    // Check if any documents remain after filtering by questionLanguage
+    if (questions.length === 0) {
+      return res.status(404).json({ message: "No questions match the filters" });
+    }
+
+    // Respond with the filtered questions
+   return res.status(200).json({
+      message: "Questions retrieved successfully",
+      data: questions,
+    });
+  } catch (error) {
+    console.error("Error fetching questions:", error);
+   return res.status(500).json({ error: "Failed to fetch questions" });
+  }
+});
+
+exports.getSubjects = functions.https.onRequest(async (req, res) => {
+  try {
+    // Fetch documents from the Subjects collection where type is "subject"
+    const snapshot = await admin.firestore()
+      .collection("subjects")
+      // .where("type", "==", "subject")
+      .get();
+
+    // Check if there are no documents
+    if (snapshot.empty) {
+      return res.status(404).json({ message: "No subjects found" });
+    }
+
+    // Map documents into an array
+    const subjects = snapshot.docs.map((doc) => ({
+      id: doc.id, // Include document ID
+      ...doc.data(), // Include document data
+    }));
+
+    // Respond with the subjects
+    res.status(200).json({
+      message: "Subjects retrieved successfully",
+      data: subjects,
+    });
+  } catch (error) {
+    console.error("Error fetching subjects:", error);
+    res.status(500).json({ error: "Failed to fetch subjects" });
+  }
+});
+
+
+//rought functions
+exports.createQuestionV2 = functions.https.onRequest(async (req, res) => {
+  try {
+    // Static data to be inserted
+    const data = {
+      questionLanguage: ["english", "hindi", "urdu"],
+      questions: {
+        english: {
+          difficulty: 1,
+          isCorrect: 0,
+          options: ["-//-", "-//-", "-//-", "-//-"],
+          title: "-//-",
         },
-      }
-    );
-
-    // Return the meeting details
-    return res.status(200).json({
-      message: "Meeting created successfully",
-      meeting: response.data,
-    });
-  } catch (error) {
-    console.error("Error creating meeting:", error.response?.data || error.message);
-
-    // Return the error response
-    return res.status(500).json({
-      error: "Failed to create the meeting",
-      details: error.response?.data || error.message,
-    });
-  }
-});
-
-exports.getMeetingParticipants = functions.https.onRequest(async (req, res) => {
-    const { meetingId } = req.query;
-    if (!meetingId || !accessToken) {
-        return res.status(400).json({
-            error: "Missing required parameters",
-            message: "Please provide both meetingId and accessToken in the request query.",
-        });
-    }
-
-    try {
-        const response = await axios.get("https://webexapis.com/v1/meetingParticipants", {
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-            },
-            params: { meetingId },
-        });
-
-        return res.status(200).json({
-            message: "Participants retrieved successfully",
-            participants: response.data,
-        });
-    } catch (error) {
-        console.error("Error fetching participants:", error.response?.data || error.message);
-        return res.status(500).json({
-            error: "Failed to fetch participants",
-            details: error.response?.data || error.message,
-        });
-    }
-});
-
-exports.getMeetingDetails = functions.https.onRequest(async (req, res) => {
-  const { meetingId } = req.query;
-console.log({meetingId});
-  // Validate input
-  if (!meetingId || !accessToken) {
-    return res.status(400).json({
-      error: "Missing required parameters",
-      message: "Please provide both meetingId and accessToken in the request query.",
-    });
-  }
-
-  try {
-    // Fetch meeting details from Webex API
-    const response = await axios.get("https://webexapis.com/v1/meetings", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
+        hindi: {
+          difficulty: 1,
+          isCorrect: 0,
+          options: ["-//-", "-//-", "-//-", "-//-"],
+          title: "-//-",
+        },
       },
-      params: { id: meetingId },
-    });
+      subject: "math",
+      topic: "trignomatry",
+    };
+console.log('isChecking 1');
+    // Add the data to the Firestore collection
+    const docRef = await admin.firestore().collection("QuestionV2").add(data);
+    console.log('isChecking 2');
 
-    // Respond with meeting details
-    return res.status(200).json({
-      message: "Meeting details retrieved successfully",
-      meetingDetails: response.data,
+    res.status(200).json({
+      message: "Document created successfully",
+      documentId: docRef.id,
     });
   } catch (error) {
-    console.error("Error fetching meeting details:", error.response?.data || error.message);
-    return res.status(500).json({
-      error: "Failed to fetch meeting details",
-      details: error.response?.data || error.message,
-    });
+    console.error("Error creating document:", error);
+    res.status(500).json({ error: "Failed to create document" });
   }
 });
 
-exports.getSingleMeeting = functions.https.onRequest(async (req, res) => {
-  const { meetingId } = req.query;
-  // Validate input
-  if (!meetingId || !accessToken) {
-    return res.status(400).json({
-      error: "Missing required parameters",
-      message: "Please provide both meetingId and accessToken in the request query.",
-    });
-  }
-
+exports.migrateQuestions = functions.https.onRequest(async (req, res) => {
   try {
-    // Fetch meeting details from Webex API
-    const response = await axios.get(`https://webexapis.com/v1/meetings/${meetingId}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      params: { id: meetingId },
+    // Fetch all documents from the `Questions` collection
+    const questionsSnapshot = await db.collection('Questions').get();
+    if (questionsSnapshot.empty) {
+      res.status(404).send('No documents found in the Questions collection.');
+      return;
+    }
+
+    // Process each document and migrate it to the new format
+    const batch = db.batch();
+    questionsSnapshot.forEach((doc) => {
+    const data = doc.data();
+
+      // New document format
+      const newQuestionData = {
+        subject: data.subject,
+        topic: null, // Set to null or populate dynamically if available
+        questionLanguage: ['en'], // Assuming the default language is English
+        createdAt: data.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+        questions: {
+          en: {
+            title: data.questionTitle,
+            options: data.options,
+            isCorrect: data.correctOption,
+            difficulty: data.difficulty,
+          },
+        },
+      };
+
+      // Reference to the new document in `QuestionV2`
+      const newDocRef = db.collection('QuestionV2').doc();
+      batch.set(newDocRef, newQuestionData);
     });
 
-    // Respond with meeting details
-    return res.status(200).json({
-      message: "Meeting details retrieved successfully",
-      meetingDetails: response.data,
-    });
+    // Commit the batch write
+    await batch.commit();
+    res.status(200).send('Migration completed successfully.');
   } catch (error) {
-    console.error("Error fetching meeting details:", error.response?.data || error.message);
-    return res.status(500).json({
-      error: "Failed to fetch meeting details",
-      details: error.response?.data || error.message,
-    });
+    console.error('Error migrating data:', error);
+    res.status(500).send('An error occurred during the migration process.');
   }
 });
 
-exports.getInviteParticipants = functions.https.onRequest(async (req, res) => {
-    const { meetingId } = req.query;
 
-  if (!accessToken) {
-        return res.status(500).json({
-            error: "Webex access token is not configured in the environment.",
-        });
-    }
-
-    if (!meetingId) {
-        return res.status(400).json({
-            error: "Missing required parameter",
-            message: "Please provide a valid meetingId in the query string.",
-        });
-    }
-
-    try {
-        // API call to Webex to fetch participants (invitees) of the meeting
-        const response = await axios.get(
-            `https://webexapis.com/v1/meetingInvitees`,
-            {
-                headers: {
-                Authorization: `Bearer ${accessToken}`,
-                    "Content-Type": "application/json",
-                },
-                params: { meetingId },
-            }
-        );
-
-        // Send back the participants data
-        res.status(200).json({
-            message: "Participants retrieved successfully",
-            participants: response.data.items,
-        });
-    } catch (error) {
-        console.error("Error fetching participants:", error.response?.data || error.message);
-
-        // Return error details to the client
-        res.status(error.response?.status || 500).json({
-            error: "Failed to fetch participants",
-            details: error.response?.data || error.message,
-        });
-    }
-});
-
-exports.inviteParticipants = functions.https.onRequest(async (req, res) => {
-    // Parse meetingId and invitees from the request body
-    const { meetingId, invitees } = req.body;
-
-  if (!accessToken) {
-        return res.status(500).json({
-            error: "Webex access token is not configured in the environment.",
-        });
-    }
-
-    if (!meetingId || !invitees || !Array.isArray(invitees) || invitees.length === 0) {
-        return res.status(400).json({
-            error: "Invalid input",
-            message: "Please provide a valid meetingId and a non-empty array of invitees.",
-        });
-    }
-
-    try {
-        // API call to Webex to add invitees to the meeting
-        const response = await axios.patch(
-            `https://webexapis.com/v1/meetings/${meetingId}`,
-            {
-                invitees: invitees.map((invitee) => ({
-                    email: invitee.email,
-                    displayName: invitee.displayName,
-                })),
-            },
-            {
-                headers: {
-                Authorization: `Bearer ${accessToken}`,
-                    "Content-Type": "application/json",
-                },
-            }
-        );
-
-        // Return the updated meeting details
-        res.status(200).json({
-            message: "Participants invited successfully",
-            meeting: response.data,
-        });
-    } catch (error) {
-        console.error("Error inviting participants:", error.response?.data || error.message);
-
-        // Return error details to the client
-        res.status(error.response?.status || 500).json({
-            error: "Failed to invite participants",
-            details: error.response?.data || error.message,
-        });
-    }
-});
