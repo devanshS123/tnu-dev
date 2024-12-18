@@ -9590,11 +9590,18 @@ exports.getQuestionsV2 = functions.https.onRequest(async (req, res) => {
 
 exports.getSubjects = functions.https.onRequest(async (req, res) => {
   try {
-    // Fetch documents from the Subjects collection where type is "subject"
-    const snapshot = await admin.firestore()
-      .collection("subjects")
-      // .where("type", "==", "subject")
-      .get();
+    const { subject } = req.query; // Get the subject name from the query
+
+    // Reference to the collection
+    let query = admin.firestore().collection("subjects").where("type", "==", "subject");
+
+    // If subject name is provided, add it to the query
+    if (subject) {
+      query = query.where("name", "==", subject);
+    }
+
+    // Execute the query
+    const snapshot = await query.get();
 
     // Check if there are no documents
     if (snapshot.empty) {
@@ -9618,3 +9625,52 @@ exports.getSubjects = functions.https.onRequest(async (req, res) => {
   }
 });
 
+
+exports.createSubject = functions.https.onRequest(async (req, res) => {
+  try {
+    // Parse the request body
+    const { name, type, topics, languages, primaryLanguages } = req.body;
+
+    // Validate required fields
+    if (!name || !type || !topics || !Array.isArray(topics) || !languages || !Array.isArray(languages)) {
+      return res.status(400).json({ error: "Invalid or missing fields in request body" });
+    }
+
+    // Ensure correct type
+    if (type.toLowerCase() !== "subject") {
+      return res.status(400).json({ error: "Type must be 'subject'" });
+    }
+
+    // Normalize topics and languages (simple spell correction - trim and lowercase)
+    const validTopics = topics.map((topic) => topic.trim().toLowerCase());
+    const validLanguages = languages.map((language) => language.trim().toLowerCase());
+
+    // Create the subject object
+    const subjectData = {
+      name: name.trim(),
+      primaryLanguages: primaryLanguages|| 'english',
+      type: type.trim(),
+      topics: validTopics,
+      languages: validLanguages
+    };
+
+    // Add the subject to Firestore and get the generated ID
+    const docRef = await admin.firestore().collection("subjects").add(subjectData);
+
+    // Update the document with the generated ID
+    await docRef.update({ id: docRef.id });
+
+    // Respond with success
+    return res.status(201).json({
+      message: "Subject created successfully",
+      subjectId: docRef.id,
+      data: {
+        id: docRef.id,
+        ...subjectData,
+      },
+    });
+  } catch (error) {
+    console.error("Error creating subject:", error);
+    return res.status(500).json({ error: "Failed to create subject" });
+  }
+});
