@@ -9674,3 +9674,418 @@ exports.createSubject = functions.https.onRequest(async (req, res) => {
     return res.status(500).json({ error: "Failed to create subject" });
   }
 });
+
+exports.createQuestionV2 = functions.https.onRequest(async (req, res) => {
+  try {
+    const {
+      createdAt,
+      difficulty,
+      english,
+      hindi,
+      primaryLanguage,
+      questionLanguages,
+      subject,
+      topic,
+    } = req.body;
+
+    // Validate input
+    if (
+      !createdAt ||
+      !difficulty ||
+      !english ||
+      !hindi ||
+      !primaryLanguage ||
+      !questionLanguages ||
+      !Array.isArray(questionLanguages) ||
+      questionLanguages.length === 0 ||
+      !subject ||
+      !topic
+    ) {
+      return res.status(400).json({ error: "Invalid or missing fields" });
+    }
+
+    // Ensure correct structure for options and question in each language
+    const validateLanguageContent = (languageContent) => {
+      return (
+        languageContent &&
+        languageContent.correctOption &&
+        Array.isArray(languageContent.options) &&
+        languageContent.options.length > 0 &&
+        languageContent.question
+      );
+    };
+
+    if (!validateLanguageContent(english) || !validateLanguageContent(hindi)) {
+      return res.status(400).json({ error: "Invalid question structure" });
+    }
+
+    // Generate a unique ID for the question
+    const id = admin.firestore().collection("QuestionsV2").doc().id;
+
+    // Prepare question document data
+    const questionData = {
+      createdAt,
+      difficulty,
+      english,
+      hindi,
+      id, // Include the generated ID
+      primaryLanguage,
+      questionLanguages,
+      subject,
+      topic,
+    };
+
+    // Save the question document to Firestore
+    await admin.firestore().collection("QuestionsV2").doc(id).set(questionData);
+
+    return res.status(201).json({
+      message: "Question created successfully",
+      questionId: id,
+    });
+  } catch (error) {
+    console.error("Error creating question:", error);
+    return res.status(500).json({ error: "Failed to create question" });
+  }
+});
+
+exports.createQuiz = functions.https.onRequest(async (req, res) => {
+  try {
+    const { name, quations } = req.body;
+
+    // Validate input
+    if (!name || !quations || !Array.isArray(quations) || quations.length === 0) {
+      return res.status(400).json({ error: "Invalid or missing fields" });
+    }
+
+    // Calculate subjectWeightage (percentage distribution of questions by subject)
+    const subjectCounts = {};
+    quations.forEach(({ Subject }) => {
+      if (!Subject) {
+        throw new Error("Missing Subject in question");
+      }
+      subjectCounts[Subject] = (subjectCounts[Subject] || 0) + 1;
+    });
+
+    const totalQuestions = quations.length;
+    const subjectWeightage = Object.entries(subjectCounts).map(([subject, count]) => ({
+      subject,
+      weightage: ((count / totalQuestions) * 100).toFixed(2), // Percentage
+    }));
+
+    // Generate a unique ID for the quiz
+    const quizId = admin.firestore().collection("QuizTest").doc().id;
+
+    // Create the quiz document in QuizTest collection with an explicit id
+    const quizData = {
+      id: quizId, // Add id field to the quiz document
+      name,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      numberOfQuation: totalQuestions,
+      subjectWeightage, // Include subject weightage
+    };
+
+    await admin.firestore().collection("QuizTest").doc(quizId).set(quizData);
+
+    // Batch write for questions
+    const batch = admin.firestore().batch();
+
+    quations.forEach((question) => {
+      const { QuationsV2Id, Subject } = question;
+
+      if (!QuationsV2Id || !Subject) {
+        throw new Error("Missing QuationsV2Id or Subject in question");
+      }
+
+      // Generate a unique ID for each question
+      const questionId = admin.firestore().collection("QuizTest")
+        .doc(quizId)
+        .collection("QuationCollection")
+        .doc().id;
+
+      const questionRef = admin.firestore().collection("QuizTest")
+        .doc(quizId)
+        .collection("QuationCollection")
+        .doc(questionId);
+
+      batch.set(questionRef, {
+        id: questionId, // Add id field to the question document
+        QuationsV2Id,
+        Subject,
+      });
+    });
+
+    // Commit batch write
+    await batch.commit();
+
+    return res.status(201).json({
+      message: "Quiz created successfully with questions",
+      quizId: quizId,
+    });
+  } catch (error) {
+    console.error("Error creating quiz:", error);
+    return res.status(500).json({ error: "Failed to create quiz" });
+  }
+});
+
+exports.createQuizBySubjectWeightage = functions.https.onRequest(async (req, res) => {
+  try {
+    const { totalNoOfQuation, quizName, subjectWeightage } = req.body;
+
+    // Validate input
+    if (
+      !totalNoOfQuation ||
+      !quizName ||
+      !subjectWeightage ||
+      !Array.isArray(subjectWeightage) ||
+      subjectWeightage.length === 0
+    ) {
+      return res.status(400).json({ error: "Invalid or missing fields" });
+    }
+
+    // Validate subjectWeightage structure
+    for (const { subject, percentage } of subjectWeightage) {
+      if (!subject || percentage == null || percentage < 0 || percentage > 100) {
+        return res.status(400).json({ error: "Invalid subject weightage structure" });
+      }
+    }
+
+    // Fetch questions for each subject based on weightage
+    const fetchedQuestions = [];
+    for (const { subject, percentage } of subjectWeightage) {
+      const questionCount = Math.round((percentage / 100) * totalNoOfQuation);
+      console.log(questionCount, subject);
+      const questionsSnapshot = await admin.firestore()
+        .collection("QuestionsV2") // Assuming questions are stored in "QuationsV2" collection
+        .where("subject", "==", subject)
+        .limit(questionCount)
+        .get();
+
+      const questions = [];
+      questionsSnapshot.forEach((doc) => {
+        questions.push({ QuationsV2Id: doc.id, ...doc.data() });
+      });
+
+      // Ensure randomness
+      while (questions.length > questionCount) {
+        questions.splice(Math.floor(Math.random() * questions.length), 1);
+      }
+
+      fetchedQuestions.push(...questions);
+    }
+    console.log(fetchedQuestions,'isCheck');
+    // Validate the number of fetched questions
+    if (fetchedQuestions.length !== totalNoOfQuation) {
+      return res.status(400).json({ error: "Insufficient questions to meet the weightage" });
+    }
+console.log('isWxicuted 1');
+    // Generate a unique ID for the quiz
+    const quizId = admin.firestore().collection("QuizTest").doc().id;
+    console.log('isWxicuted 2');
+
+    // Create the quiz document
+    const quizData = {
+      id: quizId,
+      name: quizName,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      numberOfQuation: totalNoOfQuation,
+      subjectWeightage,
+    };
+    console.log('isWxicuted 3', quizData);
+
+    await admin.firestore().collection("QuizTest").doc(quizId).set(quizData);
+    console.log('isWxicuted 4');
+    // Batch write for questions
+    const batch = admin.firestore().batch();
+    console.log('isWxicuted 5');
+    console.log(fetchedQuestions);
+    // fetchedQuestions.forEach((question) => {
+    //   console.log('check 1');
+    //   const questionId = admin.firestore().collection("QuizTest")
+    //     .doc(quizId)
+    //     .collection("QuationCollection")
+    //     .doc().id;
+    //   console.log('check 2');
+
+    //   const questionRef = admin.firestore().collection("QuizTest")
+    //     .doc(quizId)
+    //     .collection("QuationCollection")
+    //     .doc(questionId);
+    //   console.log('check 3');
+
+    //   batch.set(questionRef, {
+    //     id: questionId,
+    //     QuationsV2Id: question.QuationsV2Id,
+    //     Subject: question.Subject,
+    //   });
+    // });
+
+    fetchedQuestions.forEach((question) => {
+      console.log(question,'isFcheck');
+      const Subject  = question.subject;
+      let QuationsV2Id = question.id;
+      if (!QuationsV2Id || !Subject) {
+        throw new Error("Missing QuationsV2Id or Subject in question");
+      }
+
+      // Generate a unique ID for each question
+      const questionId = admin.firestore().collection("QuizTest")
+        .doc(quizId)
+        .collection("QuationCollection")
+        .doc().id;
+
+      const questionRef = admin.firestore().collection("QuizTest")
+        .doc(quizId)
+        .collection("QuationCollection")
+        .doc(questionId);
+
+      batch.set(questionRef, {
+        id: questionId, // Add id field to the question document
+        QuationsV2Id,
+        Subject,
+      });
+    });
+    console.log('check 4');
+
+    // Commit batch write
+    await batch.commit();
+    console.log('check 5');
+
+    return res.status(201).json({
+      message: "Quiz created successfully based on subject weightage",
+      quizId: quizId,
+    });
+  } catch (error) {
+    console.error("Error creating quiz:", error);
+    return res.status(500).json({ error: "Failed to create quiz" });
+  }
+});
+
+exports.assignQuizTest = functions.https.onRequest(async (req, res) => {
+  try {
+    // Extract fields from the request body
+    const { QuizTestId, userId, batchName, isForBatch } = req.body;
+
+    // Validate required fields
+    if (!QuizTestId) {
+      return res.status(400).send({ error: "QuizTestId is required" });
+    }
+
+    // Prepare the record
+    const assignQuizData = {
+      QuizTestId,
+      userId: userId || null,
+      batchName: batchName || null,
+      isForBatch: userId ? false : isForBatch || true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(), // Server timestamp
+    };
+
+    // Create a new document with an auto-generated ID
+    const newDocRef = admin.firestore().collection("AssignedQuizTests").doc();
+
+    // Set the record and assign the ID
+    await newDocRef.set({
+      id: newDocRef.id, // Set the document ID in the record
+      ...assignQuizData,
+    });
+
+    // Send a successful response
+    res.status(200).send({
+      success: true,
+      message: "Quiz assigned successfully",
+      id: newDocRef.id,
+    });
+  } catch (error) {
+    console.error("Error assigning quiz:", error);
+    res.status(500).send({ error: "Failed to assign quiz" });
+  }
+});
+
+exports.getAssignedQuizWithQuestions = functions.https.onRequest(async (req, res) => {
+  try {
+    // Extract fields from the request body
+    const { userId, assignedQuizId } = req.body;
+
+    // Validate required fields
+    if (!userId || !assignedQuizId) {
+      return res.status(400).send({ error: "userId and assignedQuizId are required" });
+    }
+
+    // Fetch Assigned Quiz Details
+    const assignedQuizSnapshot = await admin
+      .firestore()
+      .collection("AssignedQuizTests")
+      .where("userId", "==", userId)
+      .where("id", "==", assignedQuizId)
+      .get();
+
+    if (assignedQuizSnapshot.empty) {
+      return res.status(404).send({ error: "No assigned quiz found for the provided userId and assignedQuizId" });
+    }
+
+    // Extract assigned quiz data
+    const assignedQuizData = assignedQuizSnapshot.docs[0].data();
+    const QuizTestId = assignedQuizData.QuizTestId;
+
+    if (!QuizTestId) {
+      return res.status(404).send({ error: "No QuizTestId found in the assigned quiz data" });
+    }
+
+    // Fetch Quiz Test Details
+    const quizDoc = await admin
+      .firestore()
+      .collection("QuizTest")
+      .doc(QuizTestId)
+      // .get();
+
+return res.status(200).send({quizDoc})
+    if (!quizDoc.exists) {
+      return res.status(404).send({ error: "QuizTest not found for the given QuizTestId" });
+    }
+
+    const quizDetail = quizDoc.data();
+    assignedQuizData.quizDetail = quizDetail;
+
+    // Fetch Quiz Questions from QuestionCollection
+    const questionCollection = await admin
+      .firestore()
+      .collection("QuizTest")
+      .doc(QuizTestId)
+      .collection("QuationCollection")
+      .get();
+
+    // Get question data for each question
+    const quizQuestions = await Promise.all(
+      questionCollection.docs.map(async (doc) => {
+        const questionData = doc.data();
+
+        // Fetch detailed question data from QuestionsV2 collection
+        const questionSnapshot = await admin
+          .firestore()
+          .collection("QuestionsV2")
+          .doc(questionData.QuationsV2Id)
+          .get();
+
+        if (questionSnapshot.exists) {
+          questionData.detail = questionSnapshot.data();
+        } else {
+          questionData.detail = null;  // In case question data doesn't exist
+        }
+
+        return questionData;
+      })
+    );
+
+    // Add the quiz questions to the assigned quiz data
+    assignedQuizData.questions = quizQuestions;
+
+    // Send a successful response
+    return res.status(200).send({
+      success: true,
+      data: assignedQuizData,
+    });
+  } catch (error) {
+    console.error("Error fetching assigned quizzes:", error);
+    res.status(500).send({ error: "Failed to fetch assigned quizzes" });
+  }
+});
+
