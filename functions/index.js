@@ -9615,16 +9615,15 @@ exports.getSubjects = functions.https.onRequest(async (req, res) => {
     }));
 
     // Respond with the subjects
-    res.status(200).json({
+    return res.status(200).json({
       message: "Subjects retrieved successfully",
       data: subjects,
     });
   } catch (error) {
     console.error("Error fetching subjects:", error);
-    res.status(500).json({ error: "Failed to fetch subjects" });
+    return res.status(500).json({ error: "Failed to fetch subjects" });
   }
 });
-
 
 exports.createSubject = functions.https.onRequest(async (req, res) => {
   try {
@@ -9748,7 +9747,7 @@ exports.createQuestionV2 = functions.https.onRequest(async (req, res) => {
   }
 });
 
-exports.createQuiz = functions.https.onRequest(async (req, res) => {
+exports.createQuizV2 = functions.https.onRequest(async (req, res) => {
   try {
     const { name, quations } = req.body;
 
@@ -9827,7 +9826,7 @@ exports.createQuiz = functions.https.onRequest(async (req, res) => {
   }
 });
 
-exports.createQuizBySubjectWeightage = functions.https.onRequest(async (req, res) => {
+exports.createQuizV2BySubjectWeightage = functions.https.onRequest(async (req, res) => {
   try {
     const { totalNoOfQuation, quizName, subjectWeightage } = req.body;
 
@@ -9844,18 +9843,17 @@ exports.createQuizBySubjectWeightage = functions.https.onRequest(async (req, res
 
     // Validate subjectWeightage structure
     for (const { subject, percentage } of subjectWeightage) {
-      if (!subject || percentage == null || percentage < 0 || percentage > 100) {
+      if (!subject || percentage === null || percentage < 0 || percentage > 100) {
         return res.status(400).json({ error: "Invalid subject weightage structure" });
       }
     }
 
     // Fetch questions for each subject based on weightage
-    const fetchedQuestions = [];
-    for (const { subject, percentage } of subjectWeightage) {
+    const fetchQuestionsPromises = subjectWeightage.map(async ({ subject, percentage }) => {
       const questionCount = Math.round((percentage / 100) * totalNoOfQuation);
-      console.log(questionCount, subject);
+
       const questionsSnapshot = await admin.firestore()
-        .collection("QuestionsV2") // Assuming questions are stored in "QuationsV2" collection
+        .collection("QuestionsV2")
         .where("subject", "==", subject)
         .limit(questionCount)
         .get();
@@ -9870,17 +9868,19 @@ exports.createQuizBySubjectWeightage = functions.https.onRequest(async (req, res
         questions.splice(Math.floor(Math.random() * questions.length), 1);
       }
 
-      fetchedQuestions.push(...questions);
-    }
-    console.log(fetchedQuestions,'isCheck');
+      return questions;
+    });
+
+    // Execute all fetch questions concurrently
+    const fetchedQuestions = (await Promise.all(fetchQuestionsPromises)).flat();
+
     // Validate the number of fetched questions
     if (fetchedQuestions.length !== totalNoOfQuation) {
       return res.status(400).json({ error: "Insufficient questions to meet the weightage" });
     }
-console.log('isWxicuted 1');
+
     // Generate a unique ID for the quiz
     const quizId = admin.firestore().collection("QuizTest").doc().id;
-    console.log('isWxicuted 2');
 
     // Create the quiz document
     const quizData = {
@@ -9890,39 +9890,15 @@ console.log('isWxicuted 1');
       numberOfQuation: totalNoOfQuation,
       subjectWeightage,
     };
-    console.log('isWxicuted 3', quizData);
 
     await admin.firestore().collection("QuizTest").doc(quizId).set(quizData);
-    console.log('isWxicuted 4');
+
     // Batch write for questions
     const batch = admin.firestore().batch();
-    console.log('isWxicuted 5');
-    console.log(fetchedQuestions);
-    // fetchedQuestions.forEach((question) => {
-    //   console.log('check 1');
-    //   const questionId = admin.firestore().collection("QuizTest")
-    //     .doc(quizId)
-    //     .collection("QuationCollection")
-    //     .doc().id;
-    //   console.log('check 2');
-
-    //   const questionRef = admin.firestore().collection("QuizTest")
-    //     .doc(quizId)
-    //     .collection("QuationCollection")
-    //     .doc(questionId);
-    //   console.log('check 3');
-
-    //   batch.set(questionRef, {
-    //     id: questionId,
-    //     QuationsV2Id: question.QuationsV2Id,
-    //     Subject: question.Subject,
-    //   });
-    // });
 
     fetchedQuestions.forEach((question) => {
-      console.log(question,'isFcheck');
-      const Subject  = question.subject;
-      let QuationsV2Id = question.id;
+      const Subject = question.subject;
+      const QuationsV2Id = question.id;
       if (!QuationsV2Id || !Subject) {
         throw new Error("Missing QuationsV2Id or Subject in question");
       }
@@ -9944,11 +9920,9 @@ console.log('isWxicuted 1');
         Subject,
       });
     });
-    console.log('check 4');
 
     // Commit batch write
     await batch.commit();
-    console.log('check 5');
 
     return res.status(201).json({
       message: "Quiz created successfully based on subject weightage",
@@ -9960,7 +9934,8 @@ console.log('isWxicuted 1');
   }
 });
 
-exports.assignQuizTest = functions.https.onRequest(async (req, res) => {
+
+exports.assignQuizV2Test = functions.https.onRequest(async (req, res) => {
   try {
     // Extract fields from the request body
     const { QuizTestId, userId, batchName, isForBatch } = req.body;
@@ -9988,19 +9963,20 @@ exports.assignQuizTest = functions.https.onRequest(async (req, res) => {
       ...assignQuizData,
     });
 
-    // Send a successful response
-    res.status(200).send({
+    // Send a successful response and return
+    return res.status(200).send({
       success: true,
       message: "Quiz assigned successfully",
       id: newDocRef.id,
     });
   } catch (error) {
     console.error("Error assigning quiz:", error);
-    res.status(500).send({ error: "Failed to assign quiz" });
+    return res.status(500).send({ error: "Failed to assign quiz" });
   }
 });
 
-exports.getAssignedQuizWithQuestions = functions.https.onRequest(async (req, res) => {
+
+exports.getAssignedQuizV2WithQuestions = functions.https.onRequest(async (req, res) => {
   try {
     // Extract fields from the request body
     const { userId, assignedQuizId } = req.body;
@@ -10035,9 +10011,9 @@ exports.getAssignedQuizWithQuestions = functions.https.onRequest(async (req, res
       .firestore()
       .collection("QuizTest")
       .doc(QuizTestId)
-      // .get();
+      .get();
 
-return res.status(200).send({quizDoc})
+// return res.status(200).send({quizDoc})
     if (!quizDoc.exists) {
       return res.status(404).send({ error: "QuizTest not found for the given QuizTestId" });
     }
@@ -10085,7 +10061,116 @@ return res.status(200).send({quizDoc})
     });
   } catch (error) {
     console.error("Error fetching assigned quizzes:", error);
-    res.status(500).send({ error: "Failed to fetch assigned quizzes" });
+   return res.status(500).send({ error: "Failed to fetch assigned quizzes" });
+  }
+});
+
+exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, context) => {
+  try {
+    // Validate authentication (optional, but recommended)
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "User must be authenticated to access this function."
+      );
+    }
+
+    // Extract fields from the request data
+    const { userId, assignedQuizId } = data;
+
+    // Validate required fields
+    if (!userId || !assignedQuizId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "userId and assignedQuizId are required."
+      );
+    }
+
+    // Fetch Assigned Quiz Details
+    const assignedQuizSnapshot = await admin
+      .firestore()
+      .collection("AssignedQuizTests")
+      .where("userId", "==", userId)
+      .where("id", "==", assignedQuizId)
+      .get();
+
+    if (assignedQuizSnapshot.empty) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "No assigned quiz found for the provided userId and assignedQuizId."
+      );
+    }
+
+    // Extract assigned quiz data
+    const assignedQuizData = assignedQuizSnapshot.docs[0].data();
+    const QuizTestId = assignedQuizData.QuizTestId;
+
+    if (!QuizTestId) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "No QuizTestId found in the assigned quiz data."
+      );
+    }
+
+    // Fetch Quiz Test Details
+    const quizDoc = await admin
+      .firestore()
+      .collection("QuizTest")
+      .doc(QuizTestId)
+      .get();
+
+    if (!quizDoc.exists) {
+      throw new functions.https.HttpsError(
+        "not-found",
+        "QuizTest not found for the given QuizTestId."
+      );
+    }
+
+    const quizDetail = quizDoc.data();
+    assignedQuizData.quizDetail = quizDetail;
+
+    // Fetch Quiz Questions from QuestionCollection
+    const questionCollection = await admin
+      .firestore()
+      .collection("QuizTest")
+      .doc(QuizTestId)
+      .collection("QuationCollection")
+      .get();
+
+    // Get question data for each question
+    const quizQuestions = await Promise.all(
+      questionCollection.docs.map(async (doc) => {
+        const questionData = doc.data();
+
+        // Fetch detailed question data from QuestionsV2 collection
+        const questionSnapshot = await admin
+          .firestore()
+          .collection("QuestionsV2")
+          .doc(questionData.QuationsV2Id)
+          .get();
+
+        questionData.detail = questionSnapshot.exists ? questionSnapshot.data() : null;
+
+        return questionData;
+      })
+    );
+
+    // Add the quiz questions to the assigned quiz data
+    assignedQuizData.questions = quizQuestions;
+
+    // Send a successful response
+    return {
+      success: true,
+      data: assignedQuizData,
+    };
+  } catch (error) {
+    console.error("Error fetching assigned quizzes:", error);
+
+    // Map errors to appropriate HttpsError codes
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError("internal", "Failed to fetch assigned quizzes.");
   }
 });
 
