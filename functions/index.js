@@ -9975,8 +9975,7 @@ exports.assignQuizV2Test = functions.https.onRequest(async (req, res) => {
   }
 });
 
-
-exports.getAssignedQuizV2WithQuestions = functions.https.onRequest(async (req, res) => {
+exports.getAssignedQuizV2WithQuestionsTry = functions.https.onRequest(async (req, res) => {
   try {
     // Extract fields from the request body
     const { userId, assignedQuizId } = req.body;
@@ -10065,7 +10064,7 @@ exports.getAssignedQuizV2WithQuestions = functions.https.onRequest(async (req, r
   }
 });
 
-exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, context) => {
+exports.getAssignedQuizV2WithQuestions = functions.https.onCall(async (data, context) => {
   try {
     // Validate authentication (optional, but recommended)
     if (!context.auth) {
@@ -10075,10 +10074,8 @@ exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, 
       );
     }
 
-    // Extract fields from the request data
+    // Extract and validate required fields
     const { userId, assignedQuizId } = data;
-
-    // Validate required fields
     if (!userId || !assignedQuizId) {
       throw new functions.https.HttpsError(
         "invalid-argument",
@@ -10087,13 +10084,14 @@ exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, 
     }
 
     // Fetch Assigned Quiz Details
-    const assignedQuizSnapshot = await admin
+    const assignedQuizQuery = admin
       .firestore()
       .collection("AssignedQuizTests")
       .where("userId", "==", userId)
       .where("id", "==", assignedQuizId)
-      .get();
+      .limit(1);
 
+    const [assignedQuizSnapshot] = await Promise.all([assignedQuizQuery.get()]);
     if (assignedQuizSnapshot.empty) {
       throw new functions.https.HttpsError(
         "not-found",
@@ -10101,7 +10099,6 @@ exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, 
       );
     }
 
-    // Extract assigned quiz data
     const assignedQuizData = assignedQuizSnapshot.docs[0].data();
     const QuizTestId = assignedQuizData.QuizTestId;
 
@@ -10112,12 +10109,16 @@ exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, 
       );
     }
 
-    // Fetch Quiz Test Details
-    const quizDoc = await admin
-      .firestore()
-      .collection("QuizTest")
-      .doc(QuizTestId)
-      .get();
+    // Fetch Quiz Test Details and Questions in parallel
+    const [quizDoc, questionCollection] = await Promise.all([
+      admin.firestore().collection("QuizTest").doc(QuizTestId).get(),
+      admin
+        .firestore()
+        .collection("QuizTest")
+        .doc(QuizTestId)
+        .collection("QuationCollection")
+        .get(),
+    ]);
 
     if (!quizDoc.exists) {
       throw new functions.https.HttpsError(
@@ -10129,20 +10130,10 @@ exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, 
     const quizDetail = quizDoc.data();
     assignedQuizData.quizDetail = quizDetail;
 
-    // Fetch Quiz Questions from QuestionCollection
-    const questionCollection = await admin
-      .firestore()
-      .collection("QuizTest")
-      .doc(QuizTestId)
-      .collection("QuationCollection")
-      .get();
-
-    // Get question data for each question
+    // Fetch detailed question data in parallel
     const quizQuestions = await Promise.all(
       questionCollection.docs.map(async (doc) => {
         const questionData = doc.data();
-
-        // Fetch detailed question data from QuestionsV2 collection
         const questionSnapshot = await admin
           .firestore()
           .collection("QuestionsV2")
@@ -10150,13 +10141,27 @@ exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, 
           .get();
 
         questionData.detail = questionSnapshot.exists ? questionSnapshot.data() : null;
-
         return questionData;
       })
     );
 
-    // Add the quiz questions to the assigned quiz data
-    assignedQuizData.questions = quizQuestions;
+    // Group questions by subject and topic
+    const groupedQuestions = quizQuestions.reduce((acc, question) => {
+      const subject = question.detail.subject || "unknown";
+      const topic = question.detail.topic || "unknown";
+
+      if (!acc[subject]) {
+        acc[subject] = {};
+      }
+      if (!acc[subject][topic]) {
+        acc[subject][topic] = [];
+      }
+      acc[subject][topic].push(question);
+      return acc;
+    }, {});
+
+    // Add grouped questions to the assigned quiz data
+    assignedQuizData.groupedQuestions = groupedQuestions;
 
     // Send a successful response
     return {
@@ -10165,8 +10170,6 @@ exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, 
     };
   } catch (error) {
     console.error("Error fetching assigned quizzes:", error);
-
-    // Map errors to appropriate HttpsError codes
     if (error instanceof functions.https.HttpsError) {
       throw error;
     }
@@ -10174,3 +10177,60 @@ exports.getAssignedQuizV2WithQuestionsTry = functions.https.onCall(async (data, 
   }
 });
 
+exports.storeQuizData = functions.https.onCall(async (data, context) => {
+  try {
+    // Extract metadata
+    const { userId, assignedQuizTestId, quizTestId } = data;
+
+    // Validate required fields
+    if (!userId || !assignedQuizTestId || !quizTestId || !data.payload) {
+      throw new Error("Missing required fields: userId, assignedQuizTestId, quizTestId, or payload");
+    }
+
+    // Create the main document in `attemptedQuizTest`
+    const attemptedQuizTestRef = admin.firestore().collection("attemptedQuizTest").doc();
+    const quizTestIdRef = attemptedQuizTestRef.id; // Generate a new ID for this document
+    const createdAt = admin.firestore.FieldValue.serverTimestamp();
+
+    await attemptedQuizTestRef.set({
+      id: quizTestIdRef,
+      quizTestId: quizTestId,
+      assignQuizTestId: assignedQuizTestId,
+      userId: userId,
+      createdAt: createdAt
+    });
+
+    // Process and store questions in `attemptedQuationCollection`
+    const attemptedQuestions = [];
+    for (const subject in data.payload) {
+      const topics = data.payload[subject];
+      for (const topic in topics) {
+        topics[topic].forEach(question => {
+          attemptedQuestions.push({
+            id: admin.firestore().collection('attemptedQuationCollection').doc().id,
+            QuationsV2Id: question.id,
+            yourAns: question.answered,
+            correctAns: null, // Set this if you have correct answer logic
+            positionNo: null, // Optional: position number
+            subject: subject,
+            topic: topic,
+            createdAt: createdAt
+          });
+        });
+      }
+    }
+
+    const batch = admin.firestore().batch();
+    attemptedQuestions.forEach(question => {
+      const questionRef = admin.firestore().collection("attemptedQuationCollection").doc(question.id);
+      batch.set(questionRef, question);
+    });
+
+    await batch.commit();
+
+    return { success: true, message: "Data stored successfully." };
+  } catch (error) {
+    console.error("Error storing quiz data:", error);
+    return { success: false, message: error.message };
+  }
+});
