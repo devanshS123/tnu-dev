@@ -9470,7 +9470,7 @@ exports.storeQuizData = functions.https.onCall(async (data, context) => {
 
           batch.set(questionRef, {
             id: questionRef.id,
-            QuationsV2Id: question.id,
+            QuationsV2Id: question.QuationsV2Id,
             yourAns: question.answered || null,
             subject,
             topic,
