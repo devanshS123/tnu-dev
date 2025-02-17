@@ -9602,3 +9602,132 @@ exports.storeQuizData = functions.https.onCall(async (data, context) => {
     return { success: false, message: error.message };
   }
 });
+
+exports.storeQuizDataNew = functions.https.onCall(async (data, context) => {
+  try {
+    const { userId, assignedQuizTestId, quizTestId, payload } = data;
+
+    if (!userId || !assignedQuizTestId || !quizTestId || !payload) {
+      console.log("Missing required fields:", { userId, assignedQuizTestId, quizTestId, payload });
+      throw new Error("Missing required fields: userId, assignedQuizTestId, quizTestId, or payload");
+    }
+
+    // Create main document in `attemptedQuizTest`
+    const attemptedQuizTestRef = admin.firestore().collection("attemptedQuizTest").doc();
+    const quizTestIdRef = attemptedQuizTestRef.id;
+    const createdAt = admin.firestore.FieldValue.serverTimestamp();
+    console.log('Creating attemptedQuizTest document with ID:', quizTestIdRef);
+
+    const correctAnswerMap = { a: 0, b: 1, c: 2, d: 3 };
+    let isCorrect = 0;
+    let isNotAnswered = 0;
+    let isWrongAns =0;
+
+    await attemptedQuizTestRef.set({
+      id: quizTestIdRef,
+      quizTestId,
+      assignedQuizTestId,
+      userId,
+      createdAt,
+    });
+    console.log('Attempted quiz test document created with ID:', quizTestIdRef);
+
+    // Process questions and add to `attemptedQuestion` subcollection
+    const batch = admin.firestore().batch();
+    const questionPromises = [];
+
+    console.log('Processing questions...');
+    for (const [subject, topics] of Object.entries(payload)) {
+      for (const [topic, questions] of Object.entries(topics)) {
+        for (const question of questions) {
+          const questionRef = attemptedQuizTestRef.collection("attemptedQuestion").doc();
+          batch.set(questionRef, {
+            id: questionRef.id,
+            QuationsV2Id: question.QuationsV2Id,
+            yourAns: question.answered || null,
+            subject,
+            topic,
+            isVisited: question.isVisited || false,
+            isAnswered: question.isAnswered || false,
+            isMarked: question.isMarked || false,
+            createdAt,
+          });
+
+          // Asynchronously fetch question data from QuestionsV2
+          const questionPromise = admin.firestore()
+            .collection("QuestionsV2")
+            .doc(question.QuationsV2Id)
+            .get()
+            .then((doc) => {
+              if (!doc.exists) {
+                console.log('Question document not found for ID:', question.QuationsV2Id);
+                return;
+              }
+
+              const questionData = doc.data();
+              console.log('fetching data', questionData);
+              console.log('Fetched question data:', questionData);
+              const primaryLanguage = questionData.primaryLanguage;
+              if (!primaryLanguage) {
+                console.log('primaryLanguage is missing for question:', question.QuationsV2Id);
+                return;
+              }
+
+              const correctOptionData = questionData[primaryLanguage];
+              if (!correctOptionData) {
+                console.log(`No data found for primaryLanguage: ${primaryLanguage} in question:`, question.QuationsV2Id);
+                return;
+              }
+
+              const correctAnswer = correctOptionData.correctOption.toLowerCase();
+              const correctOption = correctAnswerMap[correctAnswer] ;
+              console.log('Correct option:', correctOption);
+              if (!correctAnswer) {
+                console.log('correctOption is missing or invalid for question:', question.QuationsV2Id);
+                return;
+              }
+              if (questionData) {
+                console.log('Correct option:', correctOption);
+
+                if (question.answered || question.answered===0) {
+                  if (parseInt(question.answered) === correctOption) {
+                    isCorrect++;
+                    console.log('Answer correct for question:', question.QuationsV2Id);
+                  }else{
+                    isWrongAns++
+                  }
+                } else {
+                  isNotAnswered++;
+                  console.log('Question not answered:', question.QuationsV2Id);
+                }
+              } else {
+                console.log('No question data found for ID:', question.QuationsV2Id);
+              }
+              return 0;
+            })
+            .catch((error) => {
+              console.error("Error fetching question data:", error);
+            });
+
+          questionPromises.push(questionPromise);
+        }
+      }
+    }
+
+    // Wait for all question data to be processed
+    console.log('Waiting for all question data to be processed...');
+    await Promise.all(questionPromises);
+
+
+    // Commit batch after all async operations are complete
+    console.log('Committing batch...');
+    await batch.commit();
+
+    console.log('Data stored successfully');
+    return { success: true, message: "Data stored successfully.", checking: { isCorrect, isNotAnswered, isWrongAns }};
+  } catch (error) {
+    console.error("Error storing quiz data:", error);
+    return { success: false, message: error.message };
+  }
+});
+
