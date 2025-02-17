@@ -9718,7 +9718,11 @@ exports.storeQuizDataNew = functions.https.onCall(async (data, context) => {
     console.log('Waiting for all question data to be processed...');
     await Promise.all(questionPromises);
 
-
+    await attemptedQuizTestRef.update({
+      isCorrect,
+      isNotAnswered,
+      isWrongAns
+    });
     // Commit batch after all async operations are complete
     console.log('Committing batch...');
     await batch.commit();
