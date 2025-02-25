@@ -7797,7 +7797,6 @@ exports.addInvoiceToIndex = functions.firestore.document('invoices/{invoices}')
 
 
 exports.emailLogin = functions.https.onCall(async (data, context) => {
-
   try {
     const email = data.email
     const stuRef = admin.firestore().collection("zSystemStudents")
@@ -9641,10 +9640,11 @@ exports.storeQuizDataNew = functions.https.onCall(async (data, context) => {
       for (const [topic, questions] of Object.entries(topics)) {
         for (const question of questions) {
           const questionRef = attemptedQuizTestRef.collection("attemptedQuestion").doc();
+          const isYourAns = question.answered || question.answered===0  ? question.answered : null 
           batch.set(questionRef, {
             id: questionRef.id,
             QuationsV2Id: question.QuationsV2Id,
-            yourAns: question.answered || null,
+            yourAns: isYourAns,
             subject,
             topic,
             isVisited: question.isVisited || false,
