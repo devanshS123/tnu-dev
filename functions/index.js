@@ -9549,6 +9549,104 @@ exports.getAssignedQuizV2QuestionsWithStudent = functions.https.onCall(async (da
   }
 });
 
+exports.getAssignedQuizV2QuestionsWithStudentInOrder = functions.https.onCall(async (data, context) => {
+  try {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "User must be authenticated.");
+    }
+
+    const { assignedQuizId } = data;
+    if (!assignedQuizId) {
+      throw new functions.https.HttpsError("invalid-argument", "assignedQuizId is required.");
+    }
+
+    // Fetch Assigned Quiz
+    const assignedQuizDoc = await admin.firestore().collection("AssignedQuizTests").doc(assignedQuizId).get();
+    let QuizTestId = assignedQuizDoc.exists ? assignedQuizDoc.data().QuizTestId : assignedQuizId;
+    console.log("Fetched QuizTestId:", QuizTestId);
+
+    if (!QuizTestId) {
+      throw new functions.https.HttpsError("not-found", "No QuizTestId found.");
+    }
+
+    // Fetch QuizTest & Questions in parallel
+    const [quizDoc, questionCollection] = await Promise.all([
+      admin.firestore().collection("QuizTest").doc(QuizTestId).get(),
+      admin.firestore().collection("QuizTest").doc(QuizTestId).collection("QuationCollection").get(),
+    ]);
+
+    if (!quizDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "QuizTest not found.");
+    }
+
+    const quizDetail = quizDoc.data();
+    const questionIds = questionCollection.docs.map(doc => doc.data().QuationsV2Id);
+    console.log("Fetched questionIds:", questionIds.length, "questions found.");
+
+    if (questionIds.length === 0) {
+      return { success: true, data: { quizDetail, groupedQuestions: {} } };
+    }
+
+    // **Batching Queries to Avoid Firestore's 30-item Limit**
+    const batchSize = 30;
+    const batchedQueries = [];
+
+    for (let i = 0; i < questionIds.length; i += batchSize) {
+      const batch = questionIds.slice(i, i + batchSize);
+      batchedQueries.push(
+        admin.firestore().collection("QuestionsV2").where("id", "in", batch).get()
+      );
+    }
+
+    // Execute batch queries in parallel
+    const questionSnapshots = await Promise.all(batchedQueries);
+    console.log("Fetched QuestionV2 Batches:", questionSnapshots.length);
+
+    // Combine results into a single map
+    const questionMap = {};
+    questionSnapshots.forEach(snapshot => {
+      snapshot.docs.forEach(doc => {
+        questionMap[doc.id] = doc.data();
+      });
+    });
+
+    console.log("questionMap:", Object.keys(questionMap).length, "questions mapped.");
+
+    // Merge details and **sort by questionNumber**
+    let questionsWithDetails = questionCollection.docs.map(doc => {
+      const questionData = doc.data();
+      return {
+        ...questionData,
+        detail: questionMap[questionData.QuationsV2Id] || {},
+      };
+    });
+
+    // **Sort questions by questionNumber**
+    questionsWithDetails.sort((a, b) => (a.detail.questionNumber || 0) - (b.detail.questionNumber || 0));
+
+    // Group questions by subject & topic
+    const groupedQuestions = questionsWithDetails.reduce((acc, question) => {
+      const subject = question.detail.subject || "unknown";
+      const topic = question.detail.topic || "unknown";
+
+      if (!acc[subject]) acc[subject] = {};
+      if (!acc[subject][topic]) acc[subject][topic] = [];
+
+      acc[subject][topic].push(question);
+      return acc;
+    }, {});
+
+    return { success: true, data: { quizDetail, groupedQuestions } };
+
+  } catch (error) {
+    console.error("Error fetching assigned quizzes:", error.message, error.stack);
+    throw new functions.https.HttpsError("internal", `Failed to fetch assigned quizzes. ${error.message}`);
+  }
+});
+
+
+
+
 exports.storeQuizData = functions.https.onCall(async (data, context) => {
   try {
     const { userId, assignedQuizTestId, quizTestId, payload } = data;
