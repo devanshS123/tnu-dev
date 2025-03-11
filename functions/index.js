@@ -9833,3 +9833,36 @@ exports.storeQuizDataNew = functions.https.onCall(async (data, context) => {
   }
 });
 
+exports.deleteStudentPermanat = functions.https.onCall(async (data, context) => {
+  try {
+    const { userID } = data;
+
+    // Delete user from Firestore (zSystemStudents collection)
+    await admin.firestore().collection("zSystemStudents").doc(userID).delete();
+
+    // Delete all records in attemptedQuizTest where userId matches userID
+    const quizRecords = await admin.firestore()
+      .collection("attemptedQuizTest")
+      .where("userId", "==", userID)
+      .get();
+
+    const batch = admin.firestore().batch();
+    quizRecords.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit(); // Execute batch deletion
+
+    // Delete user from Firebase Authentication
+    await admin.auth().deleteUser(userID);
+
+    return {
+      hasError: false,
+      message: "Student's account deleted from Firestore and Authentication.",
+    };
+
+  } catch (error) {
+    return { hasError: true, message: error.message };
+  }
+});
+
