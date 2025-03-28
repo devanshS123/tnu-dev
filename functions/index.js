@@ -9866,3 +9866,44 @@ exports.deleteStudentPermanat = functions.https.onCall(async (data, context) => 
   }
 });
 
+exports.getBatchClasses = functions.https.onCall(async (data, context) => {
+  try {
+    const { batchIds, startDate, endDate, teacherEmail, createdBy } = data;
+    let query = admin.firestore().collection("BatchClasses");
+
+
+    if (batchIds && batchIds.length > 0) {
+      query = query.where("BatchIds", "array-contains-any", batchIds);
+    }
+    if (startDate) {
+      query = query.where("start", ">=", startDate);
+    }
+    if (endDate) {
+      query = query.where("end", "<=", endDate);
+    }
+
+    if (teacherEmail) {
+      query = query.where("hostEmail", "==", teacherEmail);
+    }
+
+    if (teacherEmail) {
+      query = query.where("createdBy", "==", createdBy);
+    }
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return { hasError: false, message: "No batch classes found.", data: [] };
+    }
+
+    const batchClasses = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return { hasError: false, data: batchClasses };
+  } catch (error) {
+    return { hasError: true, message: error.message };
+  }
+});
+
