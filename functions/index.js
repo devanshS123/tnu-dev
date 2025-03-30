@@ -9644,9 +9644,6 @@ exports.getAssignedQuizV2QuestionsWithStudentInOrder = functions.https.onCall(as
   }
 });
 
-
-
-
 exports.storeQuizData = functions.https.onCall(async (data, context) => {
   try {
     const { userId, assignedQuizTestId, quizTestId, payload } = data;
@@ -9902,6 +9899,26 @@ exports.getBatchClasses = functions.https.onCall(async (data, context) => {
     }));
 
     return { hasError: false, data: batchClasses };
+  } catch (error) {
+    return { hasError: true, message: error.message };
+  }
+});
+
+
+exports.getMeetingTokens = functions.https.onCall(async (data, context) => {
+  try {
+    const snapshot = await admin.firestore().collection("MeetingToken").get();
+
+    if (snapshot.empty) {
+      return { hasError: false, message: "No meeting tokens found.", data: [] };
+    }
+
+    const meetingTokens = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return { hasError: false, data: meetingTokens };
   } catch (error) {
     return { hasError: true, message: error.message };
   }
