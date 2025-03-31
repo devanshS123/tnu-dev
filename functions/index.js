@@ -9924,3 +9924,53 @@ exports.getMeetingTokens = functions.https.onCall(async (data, context) => {
   }
 });
 
+exports.updateServiceToken = functions.https.onCall(async (data, context) => {
+  try {
+    const tokenSnapshot = await admin
+      .firestore()
+      .collection("MeetingToken")
+      .where("type", "==", "service")
+      .limit(1)
+      .get();
+
+    if (tokenSnapshot.empty) {
+      throw new Error("No service token found in MeetingToken collection.");
+    }
+
+    const tokenDoc = tokenSnapshot.docs[0];
+    const { clientId, clientSecret, refreshToken } = tokenDoc.data();
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      throw new Error("Missing required fields: clientId, clientSecret, refreshToken");
+    }
+
+    const response = await axios.post(
+      "https://webexapis.com/v1/access_token",
+      new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+      }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    const responseData = response.data;
+
+    await tokenDoc.ref.update({
+      accessToken: responseData.access_token,
+      refreshToken: responseData.refresh_token,
+      expiresIn: responseData.expires_in,
+      tokenType: responseData.token_type,
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(), 
+    });
+
+    return { success: true, data: responseData };
+  } catch (error) {
+    return {
+      success: false,
+      message:  error.message,
+    };
+  }
+});
+
