@@ -9883,7 +9883,7 @@ exports.getBatchClasses = functions.https.onCall(async (data, context) => {
       query = query.where("hostEmail", "==", teacherEmail);
     }
 
-    if (teacherEmail) {
+    if (createdBy) {
       query = query.where("createdBy", "==", createdBy);
     }
 
