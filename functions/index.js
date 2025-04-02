@@ -9973,58 +9973,177 @@ exports.updateServiceToken = functions.https.onCall(async (data, context) => {
   }
 });
 
-exports.getTeacherIntrigationAccessToken = functions.https.onCall(async (data, context) => {
+
+exports.updateAdminItegrationAppDetailsToken = functions.https.onCall(async (data, context) => {
   try {
-    const { teacherId } = data; 
-
-    if (!teacherId) {
-      throw new functions.https.HttpsError("invalid-argument", "Missing teacherId parameter.");
-    }
-
-    // Fetch the document where _uniqueID == teacherId and isTeacher == true
-    const querySnapshot = await db
-      .collection("zSystemUsers")
-      .where("_uniqueID", "==", teacherId)
-      .where("isTeacher", "==", true)
+    const tokenSnapshot = await admin
+      .firestore()
+      .collection("adminItegrationAppDetails")
+      .limit(1)
       .get();
 
-    if (querySnapshot.empty) {
-      throw new functions.https.HttpsError("not-found", "No matching document found.");
+    if (tokenSnapshot.empty) {
+      throw new Error("No service token found in MeetingToken collection.");
     }
 
-    const doc = querySnapshot.docs[0];
-    const dataObj = doc.data();
-    if (!dataObj || !dataObj.intrigrationTokenData)  throw new functions.https.HttpsError("not-found", "fetched Data No Result Found");
-    const tokenData = dataObj.intrigrationTokenData;
-    if (!tokenData || !tokenData.accessToken) {
-      throw new functions.https.HttpsError("not-found", "accessToken not found.");
+    const tokenDoc = tokenSnapshot.docs[0];
+    const { CLIENT_ID, CLIENT_SECRET, refreshToken } = tokenDoc.data();
+
+    if (!CLIENT_ID || !CLIENT_SECRET || !refreshToken) {
+      throw new Error("Missing required fields: clientId, clientSecret, refreshToken");
     }
 
-    return { accessToken: tokenData.accessToken, expiresIn: tokenData.expiresIn };
+    const response = await axios.post(
+      "https://webexapis.com/v1/access_token",
+      new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        refresh_token: refreshToken,
+      }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    const responseData = response.data;
+
+    await tokenDoc.ref.update({
+      accessToken: responseData.access_token,
+      refreshToken: responseData.refresh_token,
+      expiresIn: responseData.expires_in,
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { success: true, data: responseData };
   } catch (error) {
-    console.error("Error fetching accessToken:", error);
-    throw new functions.https.HttpsError("internal", "Internal server error.");
+    return {
+      success: false,
+      message: error.message,
+    };
   }
 });
 
-
-exports.getAdminAccessToken = functions.https.onCall(async (data, context) => {
+exports.updateAdminTeacherItegrationAppDetailsToken = functions.https.onCall(async (data, context) => {
   try {
-    const querySnapshot = await db.collection("adminItegrationAppDetails").limit(1).get();
+    const { teacherId } = data;
+    if (!teacherId) throw new Error("teacherId is missing");
 
-    if (querySnapshot.empty) {
-      throw new functions.https.HttpsError("not-found", "No document found in adminItegrationAppDetails.");
+    // Fetch service token document
+    const tokenSnapshot = await admin
+      .firestore()
+      .collection("adminItegrationAppDetails")
+      .limit(1)
+      .get();
+
+    if (tokenSnapshot.empty) {
+      throw new Error("No service token found in adminItegrationAppDetails collection.");
     }
 
-    const doc = querySnapshot.docs[0];
-    const { accessToken, expiresIn } = doc.data();
+    const tokenDoc = tokenSnapshot.docs[0].data();
 
+    const { CLIENT_ID, CLIENT_SECRET } = tokenDoc;
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+      throw new Error("Missing required fields: CLIENT_ID, CLIENT_SECRET");
+    }
 
-    return { accessToken, expireAt: expiresIn };
+    // Fetch teacher document
+    const userSnapshot = await admin
+      .firestore()
+      .collection("zSystemUsers")
+      .where("_uniqueID", "==", teacherId)
+      .get();
+
+    if (userSnapshot.empty) {
+      console.log("No matching documents found for teacherId:", teacherId);
+      return { success: false, message: "No matching user found" };
+    }
+
+    const userDoc = userSnapshot.docs[0];
+    const {intrigrationTokenData} = userDoc.data();
+    if (!intrigrationTokenData) throw new Error("intrigrationTokenData Not Found For :", teacherId)
+    const refreshToken = intrigrationTokenData.refreshToken;
+    if (!refreshToken) {
+      throw new Error("Missing refresh token for the user");
+    }
+
+    // Get new token
+    const response = await axios.post(
+      "https://webexapis.com/v1/access_token",
+      new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        refresh_token: refreshToken,
+      }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    const responseData = response.data;
+
+    // Update Firestore
+    await userDoc.ref.update({
+      "intrigrationTokenData.refreshToken": responseData.refresh_token
+    });
+
+    return { success: true, data: responseData };
   } catch (error) {
-    console.error("Error fetching admin access token:", error);
-    throw new functions.https.HttpsError("internal", "Internal server error.");
+    console.error("Error updating token:", error);
+    return {
+      success: false,
+      message: error.message,
+    };
   }
 });
+// exports.getTeacherIntrigationAccessToken = functions.https.onCall(async (data, context) => {
+//   try {
+//     const { teacherId } = data; 
+
+//     if (!teacherId) {
+//       throw new functions.https.HttpsError("invalid-argument", "Missing teacherId parameter.");
+//     }
+
+//     // Fetch the document where _uniqueID == teacherId and isTeacher == true
+//     const querySnapshot = await db
+//       .collection("zSystemUsers")
+//       .where("_uniqueID", "==", teacherId)
+//       .where("isTeacher", "==", true)
+//       .get();
+
+//     if (querySnapshot.empty) {
+//       throw new functions.https.HttpsError("not-found", "No matching document found.");
+//     }
+
+//     const doc = querySnapshot.docs[0];
+//     const dataObj = doc.data();
+//     if (!dataObj || !dataObj.intrigrationTokenData)  throw new functions.https.HttpsError("not-found", "fetched Data No Result Found");
+//     const tokenData = dataObj.intrigrationTokenData;
+//     if (!tokenData || !tokenData.accessToken) {
+//       throw new functions.https.HttpsError("not-found", "accessToken not found.");
+//     }
+
+//     return { accessToken: tokenData.accessToken, expiresIn: tokenData.expiresIn };
+//   } catch (error) {
+//     console.error("Error fetching accessToken:", error);
+//     throw new functions.https.HttpsError("internal", "Internal server error.", error);
+//   }
+// });
+
+
+// exports.getAdminAccessToken = functions.https.onCall(async (data, context) => {
+//   try {
+//     const querySnapshot = await db.collection("adminItegrationAppDetails").limit(1).get();
+
+//     if (querySnapshot.empty) {
+//       throw new functions.https.HttpsError("not-found", "No document found in adminItegrationAppDetails.");
+//     }
+
+//     const doc = querySnapshot.docs[0];
+//     const { accessToken, expiresIn } = doc.data();
+
+//     return { accessToken, expireAt: expiresIn };
+//   } catch (error) {
+//     console.error("Error fetching admin access token:", error);
+//     throw new functions.https.HttpsError("internal", "Internal server error.", error);
+//   }
+// });
 
 
