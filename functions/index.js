@@ -10007,3 +10007,24 @@ exports.getTeacherIntrigationAccessToken = functions.https.onCall(async (data, c
   }
 });
 
+
+exports.getAdminAccessToken = functions.https.onCall(async (data, context) => {
+  try {
+    const querySnapshot = await db.collection("adminItegrationAppDetails").limit(1).get();
+
+    if (querySnapshot.empty) {
+      throw new functions.https.HttpsError("not-found", "No document found in adminItegrationAppDetails.");
+    }
+
+    const doc = querySnapshot.docs[0];
+    const { accessToken, expiresIn } = doc.data();
+
+
+    return { accessToken, expireAt: expiresIn };
+  } catch (error) {
+    console.error("Error fetching admin access token:", error);
+    throw new functions.https.HttpsError("internal", "Internal server error.");
+  }
+});
+
+
