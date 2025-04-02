@@ -10081,7 +10081,7 @@ exports.updateAdminTeacherItegrationAppDetailsToken = functions.https.onCall(asy
 
     // Update Firestore
     await userDoc.ref.update({
-      "intrigrationTokenData.refreshToken": responseData.refresh_token
+      "intrigrationTokenData.accessToken": responseData.access_token
     });
 
     return { success: true, data: responseData };
