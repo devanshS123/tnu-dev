@@ -9868,7 +9868,6 @@ exports.getBatchClasses = functions.https.onCall(async (data, context) => {
     const { batchIds, startDate, endDate, teacherEmail, createdBy } = data;
     let query = admin.firestore().collection("BatchClasses");
 
-
     if (batchIds && batchIds.length > 0) {
       query = query.where("BatchIds", "array-contains-any", batchIds);
     }
@@ -9971,6 +9970,40 @@ exports.updateServiceToken = functions.https.onCall(async (data, context) => {
       success: false,
       message:  error.message,
     };
+  }
+});
+
+exports.getTeacherIntrigationAccessToken = functions.https.onCall(async (data, context) => {
+  try {
+    const { teacherId } = data; 
+
+    if (!teacherId) {
+      throw new functions.https.HttpsError("invalid-argument", "Missing teacherId parameter.");
+    }
+
+    // Fetch the document where _uniqueID == teacherId and isTeacher == true
+    const querySnapshot = await db
+      .collection("zSystemUsers")
+      .where("_uniqueID", "==", teacherId)
+      .where("isTeacher", "==", true)
+      .get();
+
+    if (querySnapshot.empty) {
+      throw new functions.https.HttpsError("not-found", "No matching document found.");
+    }
+
+    const doc = querySnapshot.docs[0];
+    const dataObj = doc.data();
+    if (!dataObj || !dataObj.intrigrationTokenData)  throw new functions.https.HttpsError("not-found", "fetched Data No Result Found");
+    const tokenData = dataObj.intrigrationTokenData;
+    if (!tokenData || !tokenData.accessToken) {
+      throw new functions.https.HttpsError("not-found", "accessToken not found.");
+    }
+
+    return { accessToken: tokenData.accessToken, expiresIn: tokenData.expiresIn };
+  } catch (error) {
+    console.error("Error fetching accessToken:", error);
+    throw new functions.https.HttpsError("internal", "Internal server error.");
   }
 });
 
