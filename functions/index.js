@@ -9910,6 +9910,90 @@ exports.getBatchClasses = functions.https.onCall(async (data, context) => {
   }
 });
 
+exports.getBatchClassesV2 = functions.https.onCall(async (data, context) => {
+  try {
+    const { batchIds, startDate, lastDate, teacherEmail, createdBy, isOnlyOne } = data;
+    let query = admin.firestore().collection("BatchClasses");
+
+    if (batchIds && batchIds.length > 0) {
+      query = query.where("BatchIds", "array-contains-any", batchIds);
+    }
+    if (startDate) {
+      query = query.where("start", "<=", startDate);
+    }
+    if (lastDate) {
+      query = query.where("lastDate", ">=", lastDate);
+    }
+
+    if (teacherEmail) {
+      query = query.where("hostEmail", "==", teacherEmail);
+    }
+
+    if (createdBy) {
+      query = query.where("createdBy", "==", createdBy);
+    }
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      return { hasError: false, message: "No batch classes found.", data: [] };
+    }
+
+    // Extract day-of-week and day-of-month from startDate
+    const start = new Date(startDate);
+    const targetDay = start.getUTCDay(); // 0 (Sunday) to 6 (Saturday)
+    const targetDate = start.getUTCDate(); // 1-31
+
+    const dayMap = [
+      "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
+    ];
+    const targetWeekDay = dayMap[targetDay];
+
+    // Process docs
+    let filteredDocs = snapshot.docs.map((doc) => {
+      return {
+        id: doc.id,
+        ...doc.data(),
+      };
+    });
+
+
+    filteredDocs = filteredDocs.filter((doc) => {
+      const { frequency, weekDays, monthDay } = doc;
+
+      if (!frequency || frequency === "none") {
+        return true;
+      }
+
+      switch (frequency) {
+        case "daily":
+          return true;
+        case "weekdays":
+          return ["monday", "tuesday", "wednesday", "thursday", "friday"].includes(targetWeekDay);
+        case "weekly":
+          return Array.isArray(weekDays) && weekDays.map(d => d.toLowerCase()).includes(targetWeekDay);
+        case "monthly":
+          return Number(monthDay) === targetDate;
+        default:
+          return true;
+      }
+    });
+
+    // Handle isOnlyOne flag
+    let batchClasses;
+    if (isOnlyOne && filteredDocs.length > 0) {
+      batchClasses = [filteredDocs[0]];
+    } else {
+      batchClasses = filteredDocs;
+    }
+
+    return { hasError: false, data: batchClasses };
+  } catch (error) {
+    return { hasError: true, message: error.message };
+  }
+});
+
+
 
 exports.getMeetingTokens = functions.https.onCall(async (data, context) => {
   try {
