@@ -9865,17 +9865,17 @@ exports.deleteStudentPermanat = functions.https.onCall(async (data, context) => 
 
 exports.getBatchClasses = functions.https.onCall(async (data, context) => {
   try {
-    const { batchIds, startDate, endDate, teacherEmail, createdBy } = data;
+    const { batchIds, startDate, lastDate, teacherEmail, createdBy,isOnlyOne } = data;
     let query = admin.firestore().collection("BatchClasses");
 
     if (batchIds && batchIds.length > 0) {
       query = query.where("BatchIds", "array-contains-any", batchIds);
     }
     if (startDate) {
-      query = query.where("start", ">=", startDate);
+      query = query.where("start", "<=", startDate);
     }
-    if (endDate) {
-      query = query.where("end", "<=", endDate);
+    if (lastDate) {
+      query = query.where("lastDate", ">=", lastDate);
     }
 
     if (teacherEmail) {
@@ -9891,11 +9891,18 @@ exports.getBatchClasses = functions.https.onCall(async (data, context) => {
     if (snapshot.empty) {
       return { hasError: false, message: "No batch classes found.", data: [] };
     }
-
-    const batchClasses = snapshot.docs.map((doc) => ({
+ let batchClasses
+    if (isOnlyOne){
+      batchClasses = [{
+        id: snapshot.docs[0].id,
+        ...snapshot.docs[0].data(),
+      }]
+    }{
+      batchClasses = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
+  }
 
     return { hasError: false, data: batchClasses };
   } catch (error) {
