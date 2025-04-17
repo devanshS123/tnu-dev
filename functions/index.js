@@ -10184,57 +10184,69 @@ exports.updateAdminTeacherItegrationAppDetailsToken = functions.https.onCall(asy
     };
   }
 });
-// exports.getTeacherIntrigationAccessToken = functions.https.onCall(async (data, context) => {
-//   try {
-//     const { teacherId } = data; 
-
-//     if (!teacherId) {
-//       throw new functions.https.HttpsError("invalid-argument", "Missing teacherId parameter.");
-//     }
-
-//     // Fetch the document where _uniqueID == teacherId and isTeacher == true
-//     const querySnapshot = await db
-//       .collection("zSystemUsers")
-//       .where("_uniqueID", "==", teacherId)
-//       .where("isTeacher", "==", true)
-//       .get();
-
-//     if (querySnapshot.empty) {
-//       throw new functions.https.HttpsError("not-found", "No matching document found.");
-//     }
-
-//     const doc = querySnapshot.docs[0];
-//     const dataObj = doc.data();
-//     if (!dataObj || !dataObj.intrigrationTokenData)  throw new functions.https.HttpsError("not-found", "fetched Data No Result Found");
-//     const tokenData = dataObj.intrigrationTokenData;
-//     if (!tokenData || !tokenData.accessToken) {
-//       throw new functions.https.HttpsError("not-found", "accessToken not found.");
-//     }
-
-//     return { accessToken: tokenData.accessToken, expiresIn: tokenData.expiresIn };
-//   } catch (error) {
-//     console.error("Error fetching accessToken:", error);
-//     throw new functions.https.HttpsError("internal", "Internal server error.", error);
-//   }
-// });
 
 
-// exports.getAdminAccessToken = functions.https.onCall(async (data, context) => {
-//   try {
-//     const querySnapshot = await db.collection("adminItegrationAppDetails").limit(1).get();
 
-//     if (querySnapshot.empty) {
-//       throw new functions.https.HttpsError("not-found", "No document found in adminItegrationAppDetails.");
-//     }
+exports.deleteTeacherAccount = functions.https.onCall(async (data, context) => {
+  const teacherId = data.teacherId;
+  if (!teacherId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Teacher ID is required');
+  }
 
-//     const doc = querySnapshot.docs[0];
-//     const { accessToken, expiresIn } = doc.data();
+  // Fetch the original user data
+  let originalUser;
+  try {
+    originalUser = await admin.auth().getUser(teacherId);
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to fetch teacher data');
+  }
 
-//     return { accessToken, expireAt: expiresIn };
-//   } catch (error) {
-//     console.error("Error fetching admin access token:", error);
-//     throw new functions.https.HttpsError("internal", "Internal server error.", error);
-//   }
-// });
+  const originalEmail = originalUser.email || 'noemail@example.com';
+  const originalName = originalUser.displayName || '';
 
+  // Create a deleted email and name
+  const timestamp = Date.now();
+  let deletedEmail = `deleted_${timestamp}_${originalEmail.replace('@', '_at_')}`;
 
+  // Ensure valid email format (append a domain if missing)
+  if (!deletedEmail.includes('@')) {
+    deletedEmail = `${deletedEmail}@deleted.com`; // Append a valid domain if missing
+  }
+
+  const deletedName = `Deleted ${originalName}`.trim();
+
+  try {
+    // Update the user's Auth record
+    await admin.auth().updateUser(teacherId, {
+      email: deletedEmail,
+      phoneNumber: null,
+      displayName: deletedName,
+    });
+
+    // Update Firestore status
+    await admin.firestore().collection('zSystemUsers').doc(teacherId).update({
+      status: 1,
+    });
+
+    return { success: true, message: 'Teacher soft deleted successfully' };
+  } catch (error) {
+    console.error('Error during teacher delete:', error);
+
+    // Rollback Firebase Auth changes if any
+    if (originalUser) {
+      try {
+        await admin.auth().updateUser(teacherId, {
+          email: originalUser.email,
+          phoneNumber: originalUser.phoneNumber,
+          displayName: originalUser.displayName,
+        });
+        console.log('Rolled back Firebase Auth changes');
+      } catch (rollbackError) {
+        console.error('Failed to rollback Firebase Auth changes:', rollbackError);
+      }
+    }
+
+    throw new functions.https.HttpsError('internal', 'Failed to delete teacher safely');
+  }
+});
