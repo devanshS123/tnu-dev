@@ -13,9 +13,14 @@ const authToken = 'bc336d379bcc9860e8b5a7b067daadc3';
 
 const algoliasearch = require("algoliasearch");
 
+//development algolia
 const algoliaApplicationID ='0DXTUWO9PQ'
 const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
 const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
+
+
+//production algolia
+// const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
 
 const index = client.initIndex("Questions_Search");
 const quizIndex = client.initIndex("Quiz_Search");
@@ -10250,3 +10255,42 @@ exports.deleteTeacherAccount = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('internal', 'Failed to delete teacher safely');
   }
 });
+
+exports.reindexAllData = functions.https.onRequest(async (req, res) => {
+  try {
+    // Index Students
+    const studentsSnapshot = await admin.firestore().collection('zSystemStudents').get();
+    const studentRecords = [];
+    studentsSnapshot.forEach(doc => {
+      const data = doc.data();
+      const objectID = doc.id;
+      studentRecords.push({ ...data, objectID, id: objectID });
+    });
+
+    if (studentRecords.length > 0) {
+      await studentIndex.saveObjects(studentRecords);
+      console.log(`Indexed ${studentRecords.length} students`);
+    }
+
+    // Index Admin Users
+    const adminUsersSnapshot = await admin.firestore().collection('zSystemUsers').get();
+    const adminUserRecords = [];
+    adminUsersSnapshot.forEach(doc => {
+      const data = doc.data();
+      const objectID = doc.id;
+      adminUserRecords.push({ ...data, objectID, id: objectID });
+    });
+
+    if (adminUserRecords.length > 0) {
+      await adminUserIndex.saveObjects(adminUserRecords);
+      console.log(`Indexed ${adminUserRecords.length} admin users`);
+    }
+
+    res.send(`Successfully indexed ${studentRecords.length} students and ${adminUserRecords.length} admin users.`);
+  } catch (error) {
+    console.error('Error during reindexing:', error);
+    res.status(500).send('Error during reindexing.');
+  }
+});
+
+
