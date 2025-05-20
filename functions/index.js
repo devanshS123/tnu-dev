@@ -10333,6 +10333,16 @@ exports.deleteIncompleteUser = functions.https.onCall(async (data, context) => {
       };
     }
 
+
+    const userSnap =  admin.firestore().collection("zSystemUsers").doc(uid)
+    const userDoc = await userSnap.get();
+    if (userDoc.exists) {
+      return {
+        success: false,
+        message: `User ${uid} has a record in zSystemUsers and cannot be deleted.`,
+      }
+    }
+
     await admin.auth().deleteUser(uid);
     return {
       success: true,
@@ -10366,6 +10376,7 @@ async function fetchUsers(nextPageToken) {
             displayName: user.displayName || null,
             providerIds: user.providerData.map(p => p.providerId),
             phoneNumber: phoneNumber || null,
+          provider:'google.com'
           });
           return;
       }else if(providers.length === 2 && providers[1] === 'phone'){
@@ -10378,21 +10389,23 @@ async function fetchUsers(nextPageToken) {
           
           if (!studentSnap.empty) return; // Email exists in zSystemStudents, skip
           
-        // Check zSystemUsers
-        const userSnap = await admin.firestore()
-        .collection("zSystemUsers")
+          // Check zSystemUsers
+          const userSnap = await admin.firestore()
+          .collection("zSystemUsers")
           .where("email", "==", email)
           .limit(1)
           .get();
           
           if (!userSnap.empty) return; // Email exists in zSystemUsers, skip
           
+        console.log(providers, phoneNumber, email, userSnap.empty);
         notMatchedUsers.push({
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || null,
           providerIds: user.providerData.map(p => p.providerId),
           phoneNumber: phoneNumber || null,
+          provider: 'google.com'
         });
         return;
       }
@@ -10404,6 +10417,7 @@ async function fetchUsers(nextPageToken) {
                 displayName: user.displayName || null,
                 providerIds: user.providerData.map(p => p.providerId),
                 phoneNumber: phoneNumber || null,
+                provider: 'mobile'
               });
           }else{
     const studentSnap = await admin.firestore()
@@ -10429,27 +10443,29 @@ async function fetchUsers(nextPageToken) {
           displayName: user.displayName || null,
           providerIds: user.providerData.map(p => p.providerId),
           phoneNumber: phoneNumber || null,
+          provider: 'mobile'
         });
-        notMatchedUsers.push({
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName || null,
-            providerIds: user.providerData.map(p => p.providerId),
-            phoneNumber: phoneNumber || null,
-          });
         return;
           }
     }else if (providers.includes('password')){
       if(providers.length === 1 && providers[0] === 'password'){
+        const userSnap = await admin.firestore()
+          .collection("zSystemUsers")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
+
+        if (!userSnap.empty) return;
         notMatchedUsers.push({
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || null,
           providerIds: user.providerData.map(p => p.providerId),
           phoneNumber: phoneNumber || null,
+          provider: 'Email'
         });
         return;
-      }else  if(providers.length === 2 && providers[0] === 'phone' && providers[1] === 'password'){
+      }else if(providers.length === 2 && providers[0] === 'phone' && providers[1] === 'password'){
     const studentSnap = await admin.firestore()
         .collection("zSystemStudents")
         .where("email", "==", email)
@@ -10473,27 +10489,19 @@ async function fetchUsers(nextPageToken) {
           displayName: user.displayName || null,
           providerIds: user.providerData.map(p => p.providerId),
           phoneNumber: phoneNumber || null,
+          provider: 'Email'
         });
-        notMatchedUsers.push({
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName || null,
-            providerIds: user.providerData.map(p => p.providerId),
-            phoneNumber: phoneNumber || null,
-          });
         return;
-        
       }
     }
-
-
-
+  })
+  
   // Recurse if there are more users
   if (result.pageToken) {
+    console.log('is next Page');
     const nextUsers = await fetchUsers(result.pageToken);
     return notMatchedUsers.concat(nextUsers);
   }
-  })
 
   return notMatchedUsers;
 }
