@@ -10256,41 +10256,266 @@ exports.deleteTeacherAccount = functions.https.onCall(async (data, context) => {
   }
 });
 
-exports.reindexAllData = functions.https.onRequest(async (req, res) => {
+// async function fetchUsers(nextPageToken) {
+//   const result = await admin.auth().listUsers(1000, nextPageToken);
+//   const matchedUsers = [];
+
+//   result.users.forEach(user => {
+//     const providers = user.providerData.map(p => p.providerId);
+
+//     if (
+//       providers.length === 1 &&
+//       ['google.com', 'phone'].includes(providers[0])
+//     ) {
+//       matchedUsers.push({
+//         uid: user.uid,
+//         email: user.email || null,
+//         phoneNumber: user.phoneNumber || null,
+//         provider: providers[0],
+//       });
+//     } else if (
+//       providers.length === 1 &&
+//       ['password', 'phone'].includes(providers[0])
+//     ) {
+//       matchedUsers.push({
+//         uid: user.uid,
+//         email: user.email || null,
+//         phoneNumber: user.phoneNumber || null,
+//         provider: providers[0],
+//       });
+//     }
+//   });
+
+//   // Accumulate users from next page
+//   if (result.pageToken) {
+//     const nextUsers = await fetchUsers(result.pageToken);
+//     return matchedUsers.concat(nextUsers); // <- Accumulate
+//   }
+
+//   return matchedUsers;
+// }
+
+// exports.listIncompleteUsers = functions.https.onCall(async (req, res) => {
+//   try {
+    
+//     const matchedUsers =  await fetchUsers();
+
+//     console.log(`✅ Total matched users: ${matchedUsers.length}`);
+//     return {
+//       success: true, data: {
+//         totalMatched: matchedUsers.length,
+//         sample: matchedUsers
+//       }};
+
+//   } catch (error) {
+//     console.error('❌ Error fetching users:', error);
+//     return {
+//       success: true, Msg: "Error fetching users",
+//     };
+//   }
+// });
+
+exports.deleteIncompleteUser = functions.https.onCall(async (data, context) => {
+  const uid = data.uid;
+
+  if (!uid) {
+    return { success: false, message: "Missing UID" };
+  }
+
   try {
-    // Index Students
-    const studentsSnapshot = await admin.firestore().collection('zSystemStudents').get();
-    const studentRecords = [];
-    studentsSnapshot.forEach(doc => {
-      const data = doc.data();
-      const objectID = doc.id;
-      studentRecords.push({ ...data, objectID, id: objectID });
-    });
+    const docRef = admin.firestore().collection("zSystemStudents").doc(uid);
+    const doc = await docRef.get();
 
-    if (studentRecords.length > 0) {
-      await studentIndex.saveObjects(studentRecords);
-      console.log(`Indexed ${studentRecords.length} students`);
+    if (doc.exists) {
+      return {
+        success: false,
+        message: `User ${uid} has a record in zSystemStudents and cannot be deleted.`,
+      };
     }
 
-    // Index Admin Users
-    const adminUsersSnapshot = await admin.firestore().collection('zSystemUsers').get();
-    const adminUserRecords = [];
-    adminUsersSnapshot.forEach(doc => {
-      const data = doc.data();
-      const objectID = doc.id;
-      adminUserRecords.push({ ...data, objectID, id: objectID });
-    });
+    await admin.auth().deleteUser(uid);
+    return {
+      success: true,
+      message: `User ${uid} was deleted successfully.`,
+    };
 
-    if (adminUserRecords.length > 0) {
-      await adminUserIndex.saveObjects(adminUserRecords);
-      console.log(`Indexed ${adminUserRecords.length} admin users`);
-    }
-
-    res.send(`Successfully indexed ${studentRecords.length} students and ${adminUserRecords.length} admin users.`);
   } catch (error) {
-    console.error('Error during reindexing:', error);
-    res.status(500).send('Error during reindexing.');
+    console.error("Error deleting user:", error);
+    return {
+      success: false,
+      message: error.message,
+    };
   }
 });
 
+async function fetchUsers(nextPageToken) {
+  const result = await admin.auth().listUsers(1000, nextPageToken);
+  const notMatchedUsers = [];
 
+  for (const user of result.users) {
+    const email = user.email;
+    const phoneNumber = user.phoneNumber;
+    const providers = user.providerData.map(p => p.providerId);
+// Face 1
+    if (providers.includes('google.com')){
+      if(providers.length === 1 && providers[0] === 'google.com'){
+        // notMatchedUsers.push({
+        //     uid: user.uid,
+        //     email: user.email,
+        //     displayName: user.displayName || null,
+        //     providerIds: user.providerData.map(p => p.providerId),
+        //     phoneNumber: phoneNumber || null,
+        //   });
+        //   continue;
+      }else if(providers.length === 2 && providers[1] === 'phone'){
+ 
+        const studentSnap = await admin.firestore()
+        .collection("zSystemStudents")
+        .where("email", "==", email)
+          .limit(1)
+          .get();
+          
+          if (!studentSnap.empty) continue; // Email exists in zSystemStudents, skip
+          
+        // Check zSystemUsers
+        const userSnap = await admin.firestore()
+        .collection("zSystemUsers")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
+          
+          if (!userSnap.empty) continue; // Email exists in zSystemUsers, skip
+          
+        notMatchedUsers.push({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || null,
+          providerIds: user.providerData.map(p => p.providerId),
+          phoneNumber: phoneNumber || null,
+        });
+        continue;
+      }
+    }else if (providers[0] === 'phone' && providers.length === 1){
+      if (!email){
+            notMatchedUsers.push({
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName || null,
+                providerIds: user.providerData.map(p => p.providerId),
+                phoneNumber: phoneNumber || null,
+              });
+          }else{
+    const studentSnap = await admin.firestore()
+        .collection("zSystemStudents")
+        .where("email", "==", email)
+          .limit(1)
+          .get();
+          
+          if (!studentSnap.empty) continue; // Email exists in zSystemStudents, skip
+          
+        // Check zSystemUsers
+        const userSnap = await admin.firestore()
+        .collection("zSystemUsers")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
+          
+          if (!userSnap.empty) continue; // Email exists in zSystemUsers, skip
+          
+        notMatchedUsers.push({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || null,
+          providerIds: user.providerData.map(p => p.providerId),
+          phoneNumber: phoneNumber || null,
+        });
+        notMatchedUsers.push({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || null,
+            providerIds: user.providerData.map(p => p.providerId),
+            phoneNumber: phoneNumber || null,
+          });
+        continue;
+          }
+    }else if (providers.includes('password')){
+      if(providers.length === 1 && providers[0] === 'password'){
+        notMatchedUsers.push({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || null,
+          providerIds: user.providerData.map(p => p.providerId),
+          phoneNumber: phoneNumber || null,
+        });
+        continue;
+      }else  if(providers.length === 2 && providers[0] === 'phone' && providers[1] === 'password'){
+    const studentSnap = await admin.firestore()
+        .collection("zSystemStudents")
+        .where("email", "==", email)
+          .limit(1)
+          .get();
+          
+          if (!studentSnap.empty) continue; // Email exists in zSystemStudents, skip
+          
+        // Check zSystemUsers
+        const userSnap = await admin.firestore()
+        .collection("zSystemUsers")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
+          
+          if (!userSnap.empty) continue; // Email exists in zSystemUsers, skip
+          
+        notMatchedUsers.push({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || null,
+          providerIds: user.providerData.map(p => p.providerId),
+          phoneNumber: phoneNumber || null,
+        });
+        notMatchedUsers.push({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || null,
+            providerIds: user.providerData.map(p => p.providerId),
+            phoneNumber: phoneNumber || null,
+          });
+        continue;
+        
+      }
+    }
+
+
+
+  // Recurse if there are more users
+  if (result.pageToken) {
+    const nextUsers = await fetchUsers(result.pageToken);
+    return notMatchedUsers.concat(nextUsers);
+  }
+  }
+
+  return notMatchedUsers;
+}
+
+exports.listIncompleteUsers = functions.https.onCall(async (data, context) => {
+  try {
+    const unmatchedUsers = await fetchUsers();
+
+    console.log(`✅ Total unmatched users: ${unmatchedUsers.length}`);
+
+    return {
+      success: true,
+      data: {
+        totalUnmatched: unmatchedUsers.length,
+        sample: unmatchedUsers,
+      },
+    };
+  } catch (error) {
+    console.error('❌ Error fetching users:', error);
+    return {
+      success: false,
+      message: "Error fetching users",
+      error: error.message,
+    };
+  }
+});
