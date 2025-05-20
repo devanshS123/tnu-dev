@@ -10362,7 +10362,7 @@ async function fetchUsers(nextPageToken) {
   const result = await admin.auth().listUsers(1000, nextPageToken);
   const notMatchedUsers = [];
 
- result.users.map(
+  await Promise.all(result.users.map(
   async (user) => {
     const email = user.email;
     const phoneNumber = user.phoneNumber;
@@ -10494,7 +10494,7 @@ async function fetchUsers(nextPageToken) {
         return;
       }
     }
-  })
+  }))
   
   // Recurse if there are more users
   if (result.pageToken) {
