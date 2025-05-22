@@ -10321,28 +10321,20 @@ exports.deleteIncompleteUser = functions.https.onCall(async (data, context) => {
   if (!uid) {
     return { success: false, message: "Missing UID" };
   }
-
   try {
     const docRef = admin.firestore().collection("zSystemStudents").doc(uid);
     const doc = await docRef.get();
 
     if (doc.exists) {
-      return {
-        success: false,
-        message: `User ${uid} has a record in zSystemStudents and cannot be deleted.`,
-      };
+    await  docRef.delete()
     }
-
-
+    
     const userSnap =  admin.firestore().collection("zSystemUsers").doc(uid)
     const userDoc = await userSnap.get();
     if (userDoc.exists) {
-      return {
-        success: false,
-        message: `User ${uid} has a record in zSystemUsers and cannot be deleted.`,
-      }
+      await userSnap.delete()
     }
-
+    
     await admin.auth().deleteUser(uid);
     return {
       success: true,
