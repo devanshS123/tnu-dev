@@ -14,13 +14,13 @@ const authToken = 'bc336d379bcc9860e8b5a7b067daadc3';
 const algoliasearch = require("algoliasearch");
 
 //development algolia
-const algoliaApplicationID ='0DXTUWO9PQ'
-const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
-const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
+// const algoliaApplicationID ='0DXTUWO9PQ'
+// const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
+// const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
 
 
 //production algolia
-// const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
+const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
 
 const index = client.initIndex("Questions_Search");
 const quizIndex = client.initIndex("Quiz_Search");
@@ -10360,6 +10360,7 @@ async function fetchUsers(nextPageToken) {
     const phoneNumber = user.phoneNumber;
     const providers = user.providerData.map(p => p.providerId);
 // Face 1
+
     if (providers.includes('google.com')){
       if(providers.length === 1 && providers[0] === 'google.com'){
         notMatchedUsers.push({
@@ -10402,6 +10403,7 @@ async function fetchUsers(nextPageToken) {
         return;
       }
     }else if (providers[0] === 'phone' && providers.length === 1){
+
       if (!email){
             notMatchedUsers.push({
                 uid: user.uid,
@@ -10441,12 +10443,14 @@ async function fetchUsers(nextPageToken) {
           }
     }else if (providers.includes('password')){
       if(providers.length === 1 && providers[0] === 'password'){
+        
         const userSnap = await admin.firestore()
-          .collection("zSystemUsers")
-          .where("email", "==", email)
-          .limit(1)
-          .get();
-
+        .collection("zSystemUsers")
+        .where("email", "==", email)
+        .limit(1)
+        .get();
+        
+        console.log(email, phoneNumber, providers);
         if (!userSnap.empty) return;
         notMatchedUsers.push({
           uid: user.uid,
