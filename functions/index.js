@@ -18,13 +18,13 @@ const algoliasearch = require("algoliasearch");
 // const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
 
 //new developemtn
-const algoliaApplicationID ='8OU36AXK7M';
-const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
-const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
+// const algoliaApplicationID ='8OU36AXK7M';
+// const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
+// const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
 
 
 //production algolia
-// const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
+const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
 
 const index = client.initIndex("Questions_Search");
 const quizIndex = client.initIndex("Quiz_Search");
@@ -39,6 +39,7 @@ const adminUserIndex = client.initIndex("Admin_User_Search");
 const enquiryIndex = client.initIndex("Enquiry_Search");
 const mediaCenterIndex = client.initIndex("MediaCenter_Search");
 const questionIndexing = client.initIndex("Question_Search");
+const quizTestIndexing = client.initIndex("Quiz_test_Search");
 
 
 const { v4: uuidv4 } = require('uuid');
@@ -4557,6 +4558,32 @@ exports.deleteQuestionV2FromIndex = functions.firestore
     return questionIndexing.deleteObject(objectID);
   });
 
+  //quiz test
+exports.addQuizTestToIndex = functions.firestore.document('QuizTest/{QuizTest}')
+  .onCreate(snapshot => {
+    const data = snapshot.data();
+    const objectID = snapshot.id;
+    return quizTestIndexing.saveObject({ ...data, objectID, id: objectID });
+  })
+
+exports.updateQuizTestInIndex = functions.firestore
+  .document('QuizTest/{QuizTest}')
+  .onUpdate(change => {
+    const newData = change.after.data();
+    const objectID = change.after.id;
+    if (newData.status === 1) {
+      return quizTestIndexing.deleteObject(objectID)
+    }
+    return quizTestIndexing.saveObject({ ...newData, objectID });
+  });
+
+exports.deleteQuizTestFromIndex = functions.firestore
+  .document('QuizTest/{QuizTest}')
+  .onDelete(snapshot => {
+    const objectID = snapshot.id;
+    return quizTestIndexing.deleteObject(objectID);
+  });
+
 
 exports.payment = functions.https.onRequest(async (request, res) => {
   res.setHeader('Content-Type', 'application/json');
@@ -8841,7 +8868,7 @@ exports.getQuestionsV2 = functions.https.onRequest(async (req, res) => {
     const { subject, topic, questionLanguage } = req.query;
 
     // Initialize Firestore query
-    let query = admin.firestore().collection("QuestionV2");
+    let query = admin.firestore().collection("QuizTest");
 
     // Apply filters if they exist
     if (subject) {
@@ -8973,7 +9000,7 @@ exports.createSubject = functions.https.onRequest(async (req, res) => {
   }
 });
 
-exports.createQuestionV2 = functions.https.onRequest(async (req, res) => {
+exports.createQuizTest = functions.https.onRequest(async (req, res) => {
   try {
     const {
       createdAt,
@@ -9636,7 +9663,7 @@ exports.getAssignedQuizV2QuestionsWithStudentInOrder = functions.https.onCall(as
 
     // Execute batch queries in parallel
     const questionSnapshots = await Promise.all(batchedQueries);
-    console.log("Fetched QuestionV2 Batches:", questionSnapshots.length);
+    console.log("Fetched QuizTest Batches:", questionSnapshots.length);
 
     // Combine results into a single map
     const questionMap = {};
