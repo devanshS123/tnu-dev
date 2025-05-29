@@ -14,8 +14,12 @@ const authToken = 'bc336d379bcc9860e8b5a7b067daadc3';
 const algoliasearch = require("algoliasearch");
 
 //development algolia
-const algoliaApplicationID ='0DXTUWO9PQ'
-const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
+// const algoliaApplicationID ='0DXTUWO9PQ'
+// const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
+
+//new developemtn
+const algoliaApplicationID ='8OU36AXK7M';
+const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
 const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
 
 
@@ -34,6 +38,7 @@ const discountIndex = client.initIndex("DocumentRequest_Search");
 const adminUserIndex = client.initIndex("Admin_User_Search");
 const enquiryIndex = client.initIndex("Enquiry_Search");
 const mediaCenterIndex = client.initIndex("MediaCenter_Search");
+const questionIndexing = client.initIndex("Question_Search");
 
 
 const { v4: uuidv4 } = require('uuid');
@@ -4526,6 +4531,32 @@ exports.deleteMediaCenterFromIndex = functions.firestore.document('MediaCenter/{
 .onDelete(snapshot => {
   return mediaCenterIndex.deleteObject(snapshot.id)
 })
+
+exports.addQuestionV2ToIndex = functions.firestore.document('QuestionsV2/{QuestionsV2}')
+  .onCreate(snapshot => {
+    const data = snapshot.data();
+    const objectID = snapshot.id;
+    return questionIndexing.saveObject({ ...data, objectID, id: objectID });
+  }) 
+
+exports.updateQuestionV2InIndex = functions.firestore
+  .document('QuestionsV2/{QuestionsV2}')
+  .onUpdate(change => {
+    const newData = change.after.data();
+    const objectID = change.after.id;
+    if (newData.status === 1){
+     return questionIndexing.deleteObject(objectID)
+    }
+    return questionIndexing.saveObject({ ...newData, objectID });
+  });
+
+exports.deleteQuestionV2FromIndex = functions.firestore
+  .document('QuestionsV2/{QuestionsV2}')
+  .onDelete(snapshot => {
+    const objectID = snapshot.id;
+    return questionIndexing.deleteObject(objectID);
+  });
+
 
 exports.payment = functions.https.onRequest(async (request, res) => {
   res.setHeader('Content-Type', 'application/json');
@@ -10592,7 +10623,6 @@ exports.listIncompleteUsers = functions.https.onCall(async (data, context) => {
     };
   }
 });
-
 
 
 
