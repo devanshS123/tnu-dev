@@ -9980,7 +9980,7 @@ function extractTime(dateStr) {
 
 exports.getBatchClassesV2 = functions.https.onCall(async (data, context) => {
   try {
-    const { batchIds, startDate, lastDate, teacherEmail, createdBy, isOnlyOne } = data;
+    const { batchIds, startDate, lastDate, teacherEmail, createdBy, isOnlyOne, isOnlyDate } = data;
     let query = admin.firestore().collection("BatchClasses");
 
     if (batchIds && batchIds.length > 0) {
@@ -10053,8 +10053,8 @@ exports.getBatchClassesV2 = functions.https.onCall(async (data, context) => {
       // and start date time must be greater then
       // new Date(startDate)
       batchClasses = filteredDocs
-        .filter(doc => extractTime(doc.start) > extractTime(startDate)) // only filter by time
-        .sort((a, b) => extractTime(a.start) - extractTime(b.start))[0];
+      .sort((a, b) => extractTime(a.start) - extractTime(b.start))
+      .filter(doc => extractTime(doc.start) > extractTime(isOnlyDate)) // only filter by time
     } else {
       batchClasses = filteredDocs;
     }
