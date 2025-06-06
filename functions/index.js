@@ -10054,8 +10054,7 @@ exports.getBatchClassesV2 = functions.https.onCall(async (data, context) => {
       // new Date(startDate)
       batchClasses = filteredDocs
         .filter(doc => extractTime(doc.start) > extractTime(startDate)) // only filter by time
-        .sort((a, b) => extractTime(a.start) - extractTime(b.start)) // sort by time
-      [0];
+        .sort((a, b) => extractTime(a.start) - extractTime(b.start))[0];
     } else {
       batchClasses = filteredDocs;
     }
