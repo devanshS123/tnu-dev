@@ -18,13 +18,13 @@ const algoliasearch = require("algoliasearch");
 // const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
 
 //new developemtn
-// const algoliaApplicationID ='8OU36AXK7M';
-// const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
-// const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
+const algoliaApplicationID ='8OU36AXK7M';
+const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
+const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
 
 
 //production algolia
-const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
+// const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
 
 const index = client.initIndex("Questions_Search");
 const quizIndex = client.initIndex("Quiz_Search");
@@ -9973,6 +9973,11 @@ exports.getBatchClasses = functions.https.onCall(async (data, context) => {
   }
 });
 
+function extractTime(dateStr) {
+  const date = new Date(dateStr);
+  return date.getHours() * 60 + date.getMinutes(); // total minutes since midnight
+}
+
 exports.getBatchClassesV2 = functions.https.onCall(async (data, context) => {
   try {
     const { batchIds, startDate, lastDate, teacherEmail, createdBy, isOnlyOne } = data;
@@ -10045,7 +10050,12 @@ exports.getBatchClassesV2 = functions.https.onCall(async (data, context) => {
     // Handle isOnlyOne flag
     let batchClasses;
     if (isOnlyOne && filteredDocs.length > 0) {
-      batchClasses = [filteredDocs[0]];
+      // and start date time must be greater then
+      // new Date(startDate)
+      batchClasses = filteredDocs
+        .filter(doc => extractTime(doc.start) > extractTime(startDate)) // only filter by time
+        .sort((a, b) => extractTime(a.start) - extractTime(b.start)) // sort by time
+      [0];
     } else {
       batchClasses = filteredDocs;
     }
