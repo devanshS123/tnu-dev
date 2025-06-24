@@ -18,13 +18,13 @@ const algoliasearch = require("algoliasearch");
 // const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
 
 //new developemtn
-const algoliaApplicationID ='8OU36AXK7M';
-const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
-const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
+// const algoliaApplicationID ='8OU36AXK7M';
+// const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
+// const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
 
 
 //production algolia
-// const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
+const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
 
 const index = client.initIndex("Questions_Search");
 const quizIndex = client.initIndex("Quiz_Search");
@@ -4610,22 +4610,45 @@ exports.payment = functions.https.onRequest(async (request, res) => {
 
 
 exports.sendNotification = functions.firestore.document('notifications/{notifications}')
-.onCreate(async snapshot => {
-  const batchRef = admin.firestore().collection("Batch")
-  const studentRef = admin.firestore().collection("zSystemStudents")
-  const data = snapshot.data();
-  let emailArray = [];
-  if(data.type === 'Batch') {
-    console.log('inBatch')
-    const batchData = await batchRef.where('itemID','in',data.batchId).get().then(querySnapshot=>{
-      return querySnapshot.docs.map(doc => ({...doc.data(),id: doc.id}))
-    })
-    batchData.forEach(async item=>{
-      let stuData = await studentRef.where('batch','array-contains',item.itemID).get().then(querySnapshot => querySnapshot.docs.map(doc => doc.data()))
-        // let stuData = querySnapshot.docs.map(doc => doc.data())
-        stuData.forEach(async item2 => {
-          let config = sendGridConfig(item2.email, 'noreply@tncollege.online', 'Notification for TN-College', 
-          `
+  .onCreate(async snapshot => {
+    const batchRef = admin.firestore().collection("Batch")
+    const studentRef = admin.firestore().collection("zSystemStudents")
+    const data = snapshot.data();
+    let emailArray = [];
+    if (data.type === 'Batch') {
+      console.log('inBatch')
+      const batchData = await batchRef.where('itemID', 'in', data.batchId).get().then(querySnapshot => {
+        return querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }))
+      })
+      const emailQueue = [];
+      await Promise.all(
+        batchData.map(async item => {
+          const stuData = await studentRef
+            .where('batch', 'array-contains', item.itemID)
+            .get()
+            .then(querySnapshot =>
+              querySnapshot.docs.map(doc => doc.data())
+            );
+
+          await Promise.all(
+            stuData.map(async student => {
+              // Prepare notification
+              await studentRef
+                .doc(student._uniqueID)
+                .collection('notifications')
+                .doc()
+                .set({
+                  createdAt: data.createdAt,
+                  message: data.message,
+                  type: data.type
+                });
+
+              // Queue email config
+              const config = sendGridConfig(
+                student.email,
+                'noreply@tncollege.online',
+                'Notification for TN-College',
+                `
           <html> 
           <body>
           <div style="padding: 20px;background: #fff;height: 80%;width: 100%;margin: 20px;">
@@ -5344,73 +5367,79 @@ exports.sendNotification = functions.firestore.document('notifications/{notifica
           </div>
           </body>
           </html>`
-          )
-            await axios(config)
-            .then((response) => console.log('Success! Mail sent.'))
-            .catch((error) => console.log(error))
-          // emailArray.push({email: item2.email})
-          await studentRef.doc(item2._uniqueID).collection('notifications').doc().set({createdAt:data.createdAt, message:data.message, type:data.type})
+              );
+              emailQueue.push(config);
+            })
+          );
         })
-      // }).catch(err => console.log('<>ERR<>',err))
-    })
-  }
-  if(data.type === 'Single') {
-    console.log('single')
+      );
+      // Send all emails at the end
+      await Promise.all(
+        emailQueue.map(config =>
+          axios(config)
+            .then(() => console.log('Success! Mail sent.'))
+            .catch(error => console.error('Email Error:', error))
+        ));
+    }
+    if (data.type === 'Single') {
+      console.log('single')
 
-    console.log(data.stuId)
-    data.stuId.map(async item=>{
-      let tempdata = await studentRef.doc(item).get().then(querySnapshot => querySnapshot.data().email)
-      console.log('tempdata',tempdata)
-      let config = sendGridConfig(tempdata, 'noreply@tncollege.online', 'Notification for TN-College', data.message)
-      await axios(config)
-      .then((response) => console.log('Success! Mail sent.'))
-      .catch((error) => console.log(error))
-      return studentRef.doc(item).collection('notifications').doc().set({createdAt:data.createdAt, message:data.message, type:data.type})
-    })
-  }
-  if(data.type === 'All') {
-    console.log('inAll')
-    let batch = admin.firestore().batch()
-    const studentsArray = await studentRef.get().then(querySnapshot=>querySnapshot.docs.map(doc => doc.data()))
-    studentsArray.forEach( item=>{
-      if(item._uniqueID){
-        if(item.email){
-          emailArray.push({email:item.email})
-          let stuRef = studentRef.doc(item._uniqueID).collection('notifications').doc()
-           batch.set(stuRef, {createdAt:data.createdAt, message:data.message, type:data.type})
+      console.log(data.stuId)
+      data.stuId.map(async item => {
+        let tempdata = await studentRef.doc(item).get().then(querySnapshot => querySnapshot.data().email)
+        console.log('tempdata', tempdata)
+        await studentRef.doc(item).collection('notifications').doc().set({ createdAt: data.createdAt, message: data.message, type: data.type })
+        let config = sendGridConfig(tempdata, 'noreply@tncollege.online', 'Notification for TN-College', data.message)
+        await axios(config)
+          .then((response) => console.log('Success! Mail sent.'))
+          .catch((error) => console.log(error))
+        return 0
+      })
+    }
+    if (data.type === 'All') {
+      console.log('inAll')
+      let batch = admin.firestore().batch()
+      const studentsArray = await studentRef.get().then(querySnapshot => querySnapshot.docs.map(doc => doc.data()))
+      studentsArray.forEach(item => {
+        if (item._uniqueID) {
+          if (item.email) {
+            emailArray.push({ email: item.email })
+            let stuRef = studentRef.doc(item._uniqueID).collection('notifications').doc()
+            batch.set(stuRef, { createdAt: data.createdAt, message: data.message, type: data.type })
+          }
         }
-      }
-    })
-    batch.commit().then(async res => {
-      const arr = emailArray
-      // .map((e, i) => {
-      //   return i % 10 === 0
-      //     ? emailArray.slice(i, i + 10)
-      //     : null;
-      // })
-      // .filter((e) => {
-      //   return e;
-      // });
-       console.log('>emailArray<',arr)
-      // return arr.forEach(async itemArr =>{
+      })
+      batch.commit().then(async res => {
+        const arr = emailArray
+        // .map((e, i) => {
+        //   return i % 10 === 0
+        //     ? emailArray.slice(i, i + 10)
+        //     : null;
+        // })
+        // .filter((e) => {
+        //   return e;
+        // });
+        console.log('>emailArray<', arr)
+        // return arr.forEach(async itemArr =>{
         let config = bulkSendGridConfig(arr, 'ritik.kaushik@crimsonbeans.co.in', `Notification from Tn-College`, data.message)
         console.log('commit done')
-        console.log('axios config',config)
-        
+        console.log('axios config', config)
+
         await axios(config)
         return console.log('Mail sent')
-      // })s
-    })
-    .catch(err => {
-      let temp = err
-      
-      return console.log('<>ERR in batch2<>',err,err.data !== undefined && err.data.errors)})
-  }
+        // })s
+      })
+        .catch(err => {
+          let temp = err
+
+          return console.log('<>ERR in batch2<>', err, err.data !== undefined && err.data.errors)
+        })
+    }
 
 
 
-  return console.log('<>NO');
-}) 
+    return console.log('<>NO');
+  }) 
 
 
 exports.payment2 = functions.https.onCall(async (data, context) => {
