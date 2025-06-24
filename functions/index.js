@@ -18,13 +18,13 @@ const algoliasearch = require("algoliasearch");
 // const algoliaAdminKey ='9b56b21daf3caa243e2f3e2610d97522'
 
 //new developemtn
-// const algoliaApplicationID ='8OU36AXK7M';
-// const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
-// const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
+const algoliaApplicationID ='8OU36AXK7M';
+const algoliaAdminKey ='77d127e9a26001a4a23b88094025adda'
+const client = algoliasearch(algoliaApplicationID, algoliaAdminKey);
 
 
 //production algolia
-const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
+// const client = algoliasearch('CG1744QXNJ', '6630b458c52c60e32457683fc602c6f6');
 
 const index = client.initIndex("Questions_Search");
 const quizIndex = client.initIndex("Quiz_Search");
